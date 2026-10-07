@@ -9,7 +9,7 @@ interface Props {
   from: string;
   token: string;
   onClose: () => void;
-  onSent: () => void;
+  onSent: (to: string) => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,7 +61,7 @@ export default function ComposeWindow({ from, token, onClose, onSent }: Props) {
         body: toSafeHtml(body),
         files,
       });
-      onSent();
+      onSent(to.trim());
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');

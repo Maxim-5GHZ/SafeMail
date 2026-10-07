@@ -55,6 +55,7 @@ export default function InboxPage() {
       const q = debouncedQuery.trim();
       const d = await listMessages(token, {
         ...(folder === 'inbox' ? { recipient: email } : { sender: email }),
+        mailbox: folder,
         ...(q ? { query: q } : {}),
         page,
         size: PAGE_SIZE,
@@ -80,6 +81,10 @@ export default function InboxPage() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [load]);
+
+  useEffect(() => {
+    document.title = `${folder === 'inbox' ? 'Входящие' : 'Отправленные'} — СейфМейл`;
+  }, [folder]);
 
   useEffect(() => {
     setPage(0);
@@ -119,7 +124,7 @@ export default function InboxPage() {
       <div className="flex-1 flex min-h-0">
         <Sidebar folder={folder} onFolder={setFolder} onCompose={() => setCompose(true)} email={email} />
         {openId ? (
-          <ReaderView id={openId} token={token} onBack={() => setOpenId(null)} onChanged={load} />
+          <ReaderView id={openId} token={token} folder={folder} onBack={() => setOpenId(null)} onChanged={load} />
         ) : (
           <div className="flex-1 bg-white flex flex-col min-w-0">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 text-sm text-gray-500">
@@ -148,13 +153,32 @@ export default function InboxPage() {
             {error && <div className="mx-4 mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
             <div className="flex-1 overflow-y-auto">
               {!data ? (
-                <div className="p-8 text-gray-400">Загрузка…</div>
+                <div className="flex flex-col gap-2 p-4" aria-label="Загрузка писем">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 animate-pulse">
+                      <div className="w-4 h-4 rounded-full bg-gray-200" />
+                      <div className="w-44 h-4 rounded bg-gray-200" />
+                      <div className="flex-1 h-4 rounded bg-gray-100" />
+                      <div className="w-12 h-3 rounded bg-gray-100" />
+                    </div>
+                  ))}
+                </div>
               ) : data.content.length === 0 ? (
                 <div className="p-8 text-gray-400 text-center">Писем нет</div>
               ) : (
                 data.content.map((m) => {
                   const unread = !readIds.includes(m.id);
                   const threat = m.verdict != null && m.verdict !== 'NONE';
+                  const sentState =
+                    folder !== 'sent'
+                      ? null
+                      : m.status === 'FAILED'
+                        ? { text: 'Не доставлено', cls: 'bg-red-100 text-red-700', title: m.lastError ?? 'Ошибка доставки' }
+                        : m.status === 'DELIVERED'
+                          ? { text: 'Доставлено', cls: 'bg-green-100 text-green-700', title: 'Письмо дошло до получателя' }
+                          : m.status === 'REROUTED' || m.status === 'FORWARDED'
+                            ? { text: 'В карантине', cls: 'bg-red-100 text-red-700', title: 'Заблокировано шлюзом' }
+                            : { text: 'Проверка…', cls: 'bg-amber-100 text-amber-700', title: 'Письмо в очереди анализа' };
                   return (
                     <div
                       key={m.id}
@@ -178,9 +202,21 @@ export default function InboxPage() {
                       </span>
                       <span className="flex-1 truncate text-sm">
                         {m.subject || '(без темы)'}
-                        <span className="font-normal text-gray-400"> — {snippet(m.cleanText)}</span>
+                        <span className="font-normal text-gray-400">
+                          {' '}—{' '}
+                          {m.cleanText?.trim()
+                            ? snippet(m.cleanText)
+                            : m.attachmentCount > 0
+                              ? `Вложение: ${m.attachmentCount} шт.`
+                              : 'без текста'}
+                        </span>
                       </span>
                       {m.attachmentCount > 0 && <span title="Есть вложения" className="inline-flex text-gray-400"><ClipIcon /></span>}
+                      {sentState && (
+                        <span title={sentState.title} className={`text-[11px] px-2 py-0.5 rounded-full shrink-0 ${sentState.cls}`}>
+                          {sentState.text}
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400 shrink-0">{formatDate(m.createdAt)}</span>
                     </div>
                   );
@@ -195,8 +231,11 @@ export default function InboxPage() {
           from={email}
           token={token}
           onClose={() => setCompose(false)}
-          onSent={() => {
-            flash('Письмо отправлено');
+          onSent={(to) => {
+            // Своему домену: 202 — лишь приём в пайплайн, вердикт будет позже.
+            // Наружу: 202 — relay принял синхронно.
+            const local = to.toLowerCase().endsWith(`@${(process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? '').toLowerCase()}`);
+            flash(local ? 'Принято — идёт проверка шлюза' : 'Письмо отправлено');
             load();
             if (folder !== 'sent') setFolder('sent');
           }}

@@ -161,12 +161,20 @@ public class InboundPipelineService {
         String b64 = (String) a.getOrDefault("content_base64", "");
         byte[] content = b64.isEmpty() ? new byte[0] : Base64.getDecoder().decode(b64);
         if (content.length > 20_000_000) continue; // режем >20МБ для BYTEA-варианта А
+        // Реальный размер — из поля size парсера (b64 может быть пуст для больших файлов).
+        long realSize = content.length;
+        try {
+          realSize = Long.parseLong(String.valueOf(a.getOrDefault("size", content.length)));
+        } catch (NumberFormatException ignored) {
+        }
+        boolean dangerous = Boolean.parseBoolean(String.valueOf(a.getOrDefault("is_dangerous", "false")));
         attachmentRepo.save(MessageAttachment.builder()
             .messageId(id)
             .filename(String.valueOf(a.getOrDefault("filename", "unnamed")))
             .contentType(String.valueOf(a.getOrDefault("content_type", "application/octet-stream")))
-            .fileSizeBytes(content.length)
+            .fileSizeBytes(realSize)
             .fileContent(content)
+            .threat(dangerous)
             .build());
       } catch (Exception e) {
         log.warn("Attachment skip: {}", e.getMessage());
@@ -223,7 +231,30 @@ public class InboundPipelineService {
     // Сигналы enrich (снятая маскировка) — в общий набор маркеров отчёта.
     int hiddenChars = (int) num(enriched, "hidden_chars_removed");
     if (hiddenChars > 0) flags.add("hidden-chars:" + hiddenChars);
+    // Сигналы парсера: опасные вложения (exe/макрос/JS в PDF/скрипт) — во флаги.
+    List<String> attachReasons = new ArrayList<>();
+    for (Map<String, Object> a : atts) {
+      if (Boolean.parseBoolean(String.valueOf(a.getOrDefault("is_dangerous", "false")))) {
+        Object rr = a.getOrDefault("risk_reasons", List.of());
+        List<String> reasons = rr instanceof List<?> l
+            ? l.stream().map(String::valueOf).toList() : List.of("dangerous");
+        for (String r : reasons) {
+          flags.add("attachment:" + r);
+          attachReasons.add(String.valueOf(a.getOrDefault("filename", "?")) + " [" + r + "]");
+        }
+      }
+    }
     String explanation = str(verdict, "explanation");
+    // Опасное вложение блокируется, даже если текст чистый: эскалация до OTHER_THREAT.
+    if (!attachReasons.isEmpty() && cat == ThreatCategory.NONE) {
+      cat = ThreatCategory.OTHER_THREAT;
+      conf = Math.max(conf, 0.85);
+      explanation = (explanation == null || explanation.isBlank() ? "" : explanation + " ")
+          + "Опасное вложение: " + String.join("; ", attachReasons) + ".";
+    } else if (!attachReasons.isEmpty()) {
+      explanation = (explanation == null ? "" : explanation)
+          + " Плюс опасное вложение: " + String.join("; ", attachReasons) + ".";
+    }
 
     MessageThreatAnalysis ta = analysisRepo.findByMessageId(id).orElse(
         MessageThreatAnalysis.builder().messageId(id).build());

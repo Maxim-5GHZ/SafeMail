@@ -1,7 +1,8 @@
-"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + SLM-х hook.
+"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + SLM-инференс.
 
-SLM: если в MODEL_PATH лежит GGUF (Qwen2.5-1.5B Q4), можно подключить llama-cpp-python.
-В MVP работает детерминированный rule-based fallback — его и покрывают startup-тесты.
+SLM: ONNX (rubert-tiny2, CPU) — эмбеддинг письма + kNN-max к эталонам категорий.
+Ловит семантические парафразы без ключевых слов. MODEL_DIR=/models/rubert-tiny2
+(volume ./models:ro); файла нет — работает детерминированный rule-based fallback.
 """
 import os
 import re
@@ -11,6 +12,9 @@ from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+from .semantic import MODEL as SEMANTIC_MODEL
+from .semantic import MODEL_NAME
 
 
 class ToxicityAndProfanityFilter:
@@ -207,20 +211,89 @@ def run_startup_tests() -> None:
     if cat_empty != "TERRORISM":
         print(f"[TEST FAIL] empty stopwords changed behavior: {cat_empty}", flush=True)
         failed += 1
+    # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
+    failed += run_semantic_startup_tests()
     if failed:
         print(f"[INIT FAIL] {failed} тестов провалено", flush=True)
         sys.exit(1)
     print("[INIT SUCCESS] Все startup-тесты прошли.", flush=True)
 
 
+def run_semantic_startup_tests() -> int:
+    """Семантические кейсы БЕЗ ключевых слов из PATTERNS (иначе их ловит эвристика).
+    Новое правило — сначала тест-кейс, потом код (§4 AGENTS.md)."""
+    if not SEMANTIC_MODEL.available:
+        print("[SEMANTIC TEST] Модель не загружена — skip (fallback без ИИ)", flush=True)
+        return 0
+    cases: list[tuple[str, str]] = [
+        ("оставлю рюкзак с сюрпризом в торговом центре", "TERRORISM"),
+        ("выпущу газ над спальным районом", "MAN_MADE"),
+        ("разрушу опоры моста перед проходом состава", "MAN_MADE"),
+        ("перечисли монеты на адрес иначе детей не увидишь", "ILLEGAL_ACTIONS"),
+        ("сожгу твой ларек вместе с товаром", "OTHER_THREAT"),
+        ("подкину крысиный яд в суп на кухне", "OTHER_THREAT"),
+        ("напоминаю про совещание завтра в девять", "NONE"),
+        ("пришлите пожалуйста акт сверки за прошлый месяц", "NONE"),
+        ("добрый вечер направляю протокол встречи", "NONE"),
+        ("во сколько завтра начинается смена", "NONE"),
+    ]
+    failed = 0
+    for text, expected in cases:
+        got, score = SEMANTIC_MODEL.predict(FILTER.normalize(text))
+        if got != expected:
+            print(f"[SEMANTIC FAIL] '{text}' expected={expected} got={got} ({score})", flush=True)
+            failed += 1
+    if not failed:
+        print(f"[SEMANTIC TEST] {len(cases)}/{len(cases)} парафраз классифицированы верно", flush=True)
+    return failed
+
+
+def fuse_verdict(category: str, score: float, flags: list[str], explanation: str,
+                 normalized: str) -> tuple[str, float, list[str], str, str, float]:
+    """Фьюжн эвристики и семантики. Возвращает
+    (final_category, final_confidence, flags, explanation, semantic_category, semantic_score).
+
+    Правила (эвристика — главная, детерминизм для жюри):
+    1. stopword или высокоуверенная эвристика (>=0.75) — побеждает, семантика лишь подтверждает.
+    2. Эвристика NONE + семантика угрозы — берём категорию семантики.
+    3. Слабая эвристика + согласие семантики — confidence = max.
+    4. Конфликт — побеждает эвристика, оба сигнала фиксируются в explanation.
+    5. Модели нет — чистый эвристический вердикт (как раньше).
+    """
+    sem_cat, sem_score = SEMANTIC_MODEL.predict(normalized)
+    if sem_cat != "NONE":
+        flags = flags + [f"semantic:{sem_cat.lower()}:{sem_score:.2f}"]
+    if not SEMANTIC_MODEL.available or (sem_cat == "NONE" and sem_score == 0.0):
+        return (category, score, flags, explanation, "NONE", 0.0)
+    strong_heu = category != "NONE" and (
+        score >= 0.75 or any(f.startswith("stopword:") for f in flags))
+    if strong_heu:
+        if sem_cat == category and sem_cat != "NONE":
+            explanation += f" Семантика подтверждает ({sem_score:.2f})."
+        return (category, score, flags, explanation, sem_cat, sem_score)
+    if category == "NONE":
+        explanation = (f"Семантический инференс ({MODEL_NAME}): {explanation} "
+                       f"Парафраз угрозы «{sem_cat}» ({sem_score:.2f}).")
+        return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score)
+    if sem_cat == category:
+        return (category, max(score, sem_score), flags,
+                explanation + f" Семантика согласна ({sem_score:.2f}).",
+                sem_cat, sem_score)
+    return (category, score, flags,
+            explanation + f" Семантика видит «{sem_cat}» ({sem_score:.2f}), оставлен вердикт эвристики.",
+            sem_cat, sem_score)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Семантика грузится ДО тестов, чтобы semantic-кейсы реально проверяли инференс.
+    model_dir = os.getenv("MODEL_DIR", "/models/rubert-tiny2")
+    SEMANTIC_MODEL.load(model_dir)
     run_startup_tests()
-    model_path = os.getenv("MODEL_PATH", "")
-    if model_path and os.path.exists(model_path):
-        print(f"[INIT] Найдена SLM-модель {model_path}, включаем llama.cpp hook (TODO: инференс)", flush=True)
+    if SEMANTIC_MODEL.available:
+        print(f"[INIT] SLM-инференс активен ({MODEL_NAME})", flush=True)
     else:
-        print("[INIT] GGUF-модель не найдена — работает rule-based fallback", flush=True)
+        print("[INIT] ONNX-модель не найдена — работает rule-based fallback", flush=True)
     yield
 
 
@@ -249,11 +322,17 @@ def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
     sw_flag = next((f for f in flags if f.startswith("stopword:")), None)
     if sw_flag is not None:
         explanation = f"Сработало управляемое стоп-слово «{sw_flag.split(':', 1)[1]}»."
+    heuristic_score = score
+    category, score, flags, explanation, sem_cat, sem_score = fuse_verdict(
+        category, score, flags, explanation, normalized)
     return {
         "category": category,
         "confidence": score,
         "explanation": explanation,
-        "heuristic_score": score,
+        "heuristic_score": heuristic_score,
         "heuristic_flags": flags,
         "highlight_phrases": highlights,
+        "semantic_category": sem_cat,
+        "semantic_score": sem_score,
+        "model": MODEL_NAME if SEMANTIC_MODEL.available else "none",
     }

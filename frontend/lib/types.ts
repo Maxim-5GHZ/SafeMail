@@ -30,6 +30,8 @@ export interface AttachmentDto {
   filename: string;
   sizeBytes: number;
   contentType: string | null;
+  /** Признак опасного вложения (exe/макрос/JS в PDF/скрипт) — из скана парсера. */
+  threat: boolean;
 }
 
 export interface DeliveryDto {
@@ -67,10 +69,14 @@ export interface MessageDto {
   createdAt: string;
   cleanText: string | null;
   normalizedText: string | null;
+  /** Исходник EML из деталки (в списке null). */
+  rawText: string | null;
   links: LinkDto[];
   attachments: AttachmentDto[];
   /** Лёгкий счётчик для списка (деталка несёт полный attachments). */
   attachmentCount: number;
+  /** Последняя ошибка доставки/релея (для FAILED-строк в Отправленных). */
+  lastError: string | null;
   deliveries: DeliveryDto[];
   threat: ThreatReportDto | null;
 }

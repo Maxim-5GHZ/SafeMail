@@ -1,0 +1,42 @@
+# SafeMail PROD-overlay: поверх docker-compose.yml.
+# Подъём: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Отличия от dev: реальные 25/587 наружу, фронт из Dockerfile.prod (standalone,
+# без bind-mount), mailhog только по профилю debug, рестарт всегда.
+services:
+  gateway:
+    ports:
+      # Входящая почта из интернета (MX) идёт только на 25; submission — на 587.
+      - "25:2525"
+      - "587:2587"
+    environment:
+      # Реальный relay для чистой почты (см. docs/PROD.md). Дефолт — mailhog,
+      # но в проде он не стартует (профиль debug) — задайте свой SMTP.
+      - MAIL_RELAY_HOST=${MAIL_RELAY_HOST:-mailhog}
+      - MAIL_RELAY_PORT=${MAIL_RELAY_PORT:-1025}
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    # Standalone server.js слушает PORT (в образе EXPOSE 3000) —
+    # поднимаем на 3008, куда смотрит nginx upstream.
+    environment:
+      - PORT=3008
+      - BACKEND_URL=http://gateway:8080
+      - NEXT_PUBLIC_MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
+    # Никаких bind-mount: в проде код только из образа.
+    volumes: []
+    restart: always
+
+  mailhog:
+    # В проде не стартует: docker compose -f ... --profile debug up -d при нужде.
+    profiles:
+      - debug
+    restart: "no"
+
+  nginx:
+    restart: always
+
+  postgres:
+    restart: always

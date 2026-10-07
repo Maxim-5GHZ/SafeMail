@@ -39,7 +39,7 @@ class MessageServiceCategorySpecTest {
   void categoryAddsExistsSubquery() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
-    svc().getFilteredMessages(null, ThreatCategory.MAN_MADE, null, null, null, PageRequest.of(0, 20));
+    svc().getFilteredMessages(null, ThreatCategory.MAN_MADE, null, null, null, null, PageRequest.of(0, 20));
 
     ArgumentCaptor<Specification> captor = ArgumentCaptor.forClass(Specification.class);
     verify(messages).findAll(captor.capture(), any(org.springframework.data.domain.Pageable.class));
@@ -64,7 +64,7 @@ class MessageServiceCategorySpecTest {
   void noCategoryNoSubquery() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
-    svc().getFilteredMessages(null, null, null, null, null, PageRequest.of(0, 20));
+    svc().getFilteredMessages(null, null, null, null, null, null, PageRequest.of(0, 20));
 
     ArgumentCaptor<Specification> captor = ArgumentCaptor.forClass(Specification.class);
     verify(messages).findAll(captor.capture(), any(org.springframework.data.domain.Pageable.class));

@@ -26,12 +26,17 @@ public class MessageService {
 
   @Transactional(readOnly = true)
   public Page<MessageDto> getFilteredMessages(MessageStatus status, ThreatCategory category,
-      String sender, String recipient, String query, Pageable pageable) {
+      String sender, String recipient, String query, String mailbox, Pageable pageable) {
     Specification<Message> spec = (root, q, cb) -> {
       List<Predicate> p = new ArrayList<>();
       if (status != null) p.add(cb.equal(root.get("status"), status));
       if (sender != null && !sender.isBlank()) p.add(cb.like(cb.lower(root.get("senderEmail")), "%" + sender.toLowerCase() + "%"));
       if (recipient != null && !recipient.isBlank()) p.add(cb.like(cb.lower(root.get("recipientEmail")), "%" + recipient.toLowerCase() + "%"));
+      if ("inbox".equalsIgnoreCase(mailbox)) {
+        // Карантин получателю не доставлялся — во Входящих его нет (тихо, без заглушек).
+        // Отправленные (sent) карантин видят — отправитель должен знать о блокировке.
+        p.add(cb.not(root.get("status").in(MessageStatus.REROUTED, MessageStatus.FORWARDED)));
+      }
       if (query != null && !query.isBlank()) {
         // Поиск по теме + тексту: связь Message→parsed в JPA тоже без ассоциации — EXISTS.
         String like = "%" + query.toLowerCase() + "%";
@@ -75,6 +80,7 @@ public class MessageService {
       parsedRepo.findByMessageId(m.getId()).ifPresent(pd -> dto.setCleanText(pd.getCleanText()));
       // В списке — только счётчик (BLOB-ы вложений в список не тянем).
       dto.setAttachmentCount((int) attachmentRepo.countByMessageId(m.getId()));
+      dto.setLastError(lastFailure(m.getId()));
       return dto;
     });
   }
@@ -82,6 +88,11 @@ public class MessageService {
   @Transactional(readOnly = true)
   public MessageDto getMessageDetails(UUID id) {
     Message m = messages.findById(id).orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
+    if ((m.getStatus() == MessageStatus.REROUTED || m.getStatus() == MessageStatus.FORWARDED)
+        && !currentUserIsAdmin()) {
+      // Карантин получателю не виден: тот же 404, что для несуществующего (не палим факт блокировки).
+      throw new NoSuchElementException("Message not found: " + id);
+    }
     MessageDto dto = new MessageDto();
     dto.setId(m.getId());
     dto.setSenderEmail(m.getSenderEmail());
@@ -93,6 +104,12 @@ public class MessageService {
       dto.setCleanText(pd.getCleanText());
       dto.setNormalizedText(pd.getNormalizedText());
     });
+    // Исходное письмо как пришло (EML): декодируем UTF-8 с заменой, режем для UI.
+    if (m.getRawContent() != null && m.getRawContent().length > 0) {
+      String raw = new String(m.getRawContent(), java.nio.charset.StandardCharsets.UTF_8);
+      if (raw.length() > 20000) raw = raw.substring(0, 20000) + "\n…[обрезано]";
+      dto.setRawText(raw);
+    }
     dto.setLinks(linkRepo.findByMessageId(id).stream().map(l -> {
       MessageDto.LinkDto d = new MessageDto.LinkDto();
       d.setUrl(l.getUrl());
@@ -107,9 +124,11 @@ public class MessageService {
       d.setFilename(a.getFilename());
       d.setSizeBytes(a.getFileSizeBytes());
       d.setContentType(a.getContentType());
+      d.setThreat(a.isThreat());
       return d;
     }).toList());
     dto.setAttachmentCount(dto.getAttachments().size());
+    dto.setLastError(lastFailure(id));
     analysisRepo.findByMessageId(id).ifPresent(a -> {
       dto.setVerdict(a.getFinalVerdict());
       MessageDto.ThreatReportDto t = new MessageDto.ThreatReportDto();
@@ -134,8 +153,24 @@ public class MessageService {
     return dto;
   }
 
-  /** JSONB -> объект для API; битый/пустой JSON отдаём как есть, фронт разберёт. */
-  private Object parseJsonLenient(String raw) {
+  /** Роль из JWT (фильтр кладёт ROLE_*); без аутентификации — обычный пользователь. */
+  public static boolean currentUserIsAdmin() {
+    var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+    return auth != null && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+  }
+
+  /** Последняя неуспешная запись delivery_logs (причина для FAILED-строк). */
+  private String lastFailure(UUID id) {
+    return deliveryRepo.findByMessageId(id).stream()
+        .filter(dl -> !dl.isSuccess())
+        .max(java.util.Comparator.comparing(
+            DeliveryLog::getAttemptedAt,
+            java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+        .map(DeliveryLog::getSmtpResponse)
+        .orElse(null);
+  }
+
+  /** JSONB -> объект для API; битый/пустой JSON отдаём как есть, фронт разберёт. */  private Object parseJsonLenient(String raw) {
     if (raw == null || raw.isBlank()) return raw;
     try {
       return objectMapper.readValue(raw, Object.class);

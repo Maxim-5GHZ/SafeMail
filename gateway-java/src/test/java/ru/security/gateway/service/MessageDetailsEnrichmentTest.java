@@ -34,8 +34,18 @@ class MessageDetailsEnrichmentTest {
         deliveryRepo, new com.fasterxml.jackson.databind.ObjectMapper());
   }
 
+  @org.junit.jupiter.api.AfterEach
+  void clearAuth() {
+    org.springframework.security.core.context.SecurityContextHolder.clearContext();
+  }
+
   @Test
   void detailsExposeNormalizedLinkDetailsAndDeliveries() {
+    // Шторка — инструмент админа: карантин виден только с ROLE_ADMIN.
+    org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+        new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+            "admin@corp-sec.ru", null,
+            List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
     UUID id = UUID.randomUUID();
     Message m = Message.builder().senderEmail("a@evil.ru").recipientEmail("bob@corp-sec.ru")
         .subject("t").status(MessageStatus.REROUTED).build();

@@ -59,6 +59,8 @@ export interface ListParams {
   sender?: string;
   recipient?: string;
   query?: string;
+  /** Папка: inbox тихо вырезает карантин (REROUTED/FORWARDED), sent — нет. */
+  mailbox?: 'inbox' | 'sent';
   page?: number;
   size?: number;
 }
@@ -70,6 +72,7 @@ export function listMessages(token: string, p: ListParams, signal?: AbortSignal)
   if (p.sender) q.set('sender', p.sender);
   if (p.recipient) q.set('recipient', p.recipient);
   if (p.query) q.set('query', p.query);
+  if (p.mailbox) q.set('mailbox', p.mailbox);
   q.set('page', String(p.page ?? 0));
   q.set('size', String(p.size ?? 20));
   q.set('sortBy', 'createdAt');

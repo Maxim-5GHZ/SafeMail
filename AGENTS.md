@@ -106,7 +106,19 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
 (`requirements.txt`: `fastapi, uvicorn(без [standard]), httpx|multipart`).
 
 - **parser** `POST /internal/parse-extract {raw_base64}` →
-  `{clean_text, attachments[{filename,content_type,content_base64}], links[{url}]}`.
+  `{clean_text, extracted_attachments_text, attachments[{filename,content_type,size,content_base64,
+  extracted_text,is_dangerous,risk_score,risk_reasons[]}], links[{url}]}`.
+  Текст вложений (PDF через `pypdf`, OOXML/ODF через stdlib-zip, plain/html — декодированием)
+  идёт в `extracted_attachments_text` и входит в enrich/classify-вход — угроза внутри
+  PDF/DOC ловится. Скан вложений: exe-расширения, двойные расширения (`pdf.exe`),
+  макросы VBA (`vbaProject.bin` в zip), JS/Launch/Embedded в PDF, скрипты в HTML,
+  exe внутри zip (`risk_reasons`, `is_dangerous` при `risk_score>=70`).
+  Безобидный `/OpenAction [page /Fit]` навигации — не угроза (только в связке с JS/Launch,
+  иначе fpdf2/Word-PDF уходили бы в карантин — регрессия покрыта startup-тестом).
+  Gateway: опасное вложение при чистом тексте эскалирует вердикт до `OTHER_THREAT 0.85`
+  (флаги `attachment:<reason>`), `message_attachments.is_threat=true`; деталка отдаёт
+  `attachments[{id,filename,sizeBytes,contentType,threat}]`, скачивание —
+  `GET /messages/{id}/attachments/{attId}` (доступно и из карантина в шторке).
 - **enrich** `POST /internal/normalize-enrich {text, urls}` →
   `{normalized_text, speller_fixes[{original,suggested,source}], links[{url,is_phishing,risk_score}], hidden_chars_removed}`.
   URL транслитерировать **запрещено** (резать текст по URL, нормализовать
@@ -180,13 +192,28 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   после входа и с корня `/` роль `ADMIN` ведётся сразу в `/admin` (SOC),
   остальные — в `/inbox` (`homeForRole/roleOf/storedRole` в `lib/auth`).
 - `/inbox` — Gmail-стиль: топбар с поиском (`?query=`, debounce 400мс),
-  сайдбар (Входящие=`?recipient=я` / Отправленные=`?sender=я`), компактные строки
-   (жирность=непрочитано из `localStorage`, SVG-звезда тоже там, красная точка=угроза,
+  сайдбар (Входящие=`?recipient=я&mailbox=inbox` / Отправленные=`?sender=я&mailbox=sent`),
+  компактные строки (жирность=непрочитано из `localStorage`, SVG-звезда тоже там, красная точка=угроза,
    SVG-скрепка=вложения), пагинация стрелками `‹ ›` + кнопка `Обновить`, polling 5с. Клик → экран чтения
    (статус-бейдж, вердикт-баннер, тело `pre-wrap`, чипы вложений → blob-скачивание,
    кнопка `Перепроверить`). Плавающее окно «Написать» (один `to`, CC/BCC нет;
   `\n→<br/>` + escape — бэк шлёт `setText(html=true)`; файлы ≤20МБ, иначе
   клиентский отказ).
+- `/inbox` — бейджи статуса зависят от папки (`folderStatusLabel` в `labels.ts`):
+  во Входящих `DELIVERED` — нейтральное «Получено» (адресат и есть читатель),
+  в Отправленных — честно: «Доставлено получателю» / «На проверке шлюза» /
+  «Заблокировано шлюзом» / «Не доставлено — ошибка». Деталка и список несут
+  `lastError` (последний неуспешный `smtpResponse` из `delivery_logs`):
+  FAILED-строки в Отправленных красные с причиной в тултипе, в деталке —
+  красный бокс. Тост после `202`: своему домену — «Принято — идёт проверка
+  шлюза» (вердикт позже), наружу — «Письмо отправлено». SMTP-таймауты релея
+  (`connectiontimeout 5с / timeout 10с`) — мёртвый relay даёт быструю 500
+  с текстом, а не виснет. Пустое тело с вложениями — «Текста нет — только
+  <имя> (размер)», в списке — «Вложение: N шт.». Карантин получателю невидим:
+  `mailbox=inbox` вырезает `REROUTED`/`FORWARDED` из списка (тихо, без заглушек),
+  деталка и скачивание вложений из карантина для не-`ADMIN` — 404 тем же телом,
+  что для несуществующего (факт блокировки не палится); отправитель карантин
+  в «Отправленных» видит, админ — в `/admin`.
 - `/admin` (роль `ADMIN`, иначе 403-панель) — три вкладки: `Карантин` (дефолтная,
   два ящика `REROUTED`/`FORWARDED` со счётчиками + чипы категорий активного ящика
   (`byCategoryRerouted`/`byCategoryForwarded`) + таблица + пагинация, polling 10с) /
@@ -242,6 +269,12 @@ BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
 dev-сервера в `./frontend/.next` ломает хостовые `npm run build/typecheck` (EACCES).
 `mailhog` (:1025 SMTP, :8025 веб) — MVP-relay: сюда уходят чистые письма
 и карантин (`MAIL_RELAY_HOST=mailhog`). Без relay доставка падает в `FAILED`.
+Прод — overlay `docker-compose.prod.yml`
+(`-f docker-compose.yml -f docker-compose.prod.yml up -d --build`):
+реальные `25:2525`/`587:2587` наружу, фронт из `Dockerfile.prod` (standalone,
+`PORT=3008` под nginx upstream, без bind-mount), mailhog только по профилю
+`debug`, relay — через `MAIL_RELAY_HOST/PORT` из `.env`. Приём из интернета
+(Gmail→шлюз): MX/A-записи + открытый 25-й порт у хостера — см. `docs/PROD.md`.
 В песочнице без сети `docker build` может не тянуть PyPI — это ок,
 код от этого не меняется.
 

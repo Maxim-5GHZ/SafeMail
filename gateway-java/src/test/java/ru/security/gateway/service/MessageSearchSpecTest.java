@@ -44,7 +44,7 @@ class MessageSearchSpecTest {
   void recipientLikeArgs() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
-    svc().getFilteredMessages(null, null, null, "BOB@corp-sec.ru", null, PageRequest.of(0, 20));
+    svc().getFilteredMessages(null, null, null, "BOB@corp-sec.ru", null, null, PageRequest.of(0, 20));
 
     Specification<Message> spec = captureSpec();
     Root root = mock(Root.class);
@@ -59,7 +59,7 @@ class MessageSearchSpecTest {
   void querySearchesSubjectAndParsedText() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
-    svc().getFilteredMessages(null, null, null, null, "счёт", PageRequest.of(0, 20));
+    svc().getFilteredMessages(null, null, null, null, "счёт", null, PageRequest.of(0, 20));
 
     Specification<Message> spec = captureSpec();
     Root root = mock(Root.class);
@@ -82,7 +82,7 @@ class MessageSearchSpecTest {
   void noQueryNoParsedSubquery() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
-    svc().getFilteredMessages(null, null, "a@x.ru", "b@x.ru", null, PageRequest.of(0, 20));
+    svc().getFilteredMessages(null, null, "a@x.ru", "b@x.ru", null, null, PageRequest.of(0, 20));
 
     Specification<Message> spec = captureSpec();
     CriteriaQuery query = mock(CriteriaQuery.class);

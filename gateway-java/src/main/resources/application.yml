@@ -25,6 +25,11 @@ spring:
       mail:
         smtp:
           auth: false
+          # Мёртвый relay не должен вешать /send: быстрая 500 с текстом,
+          # которую фронт показывает пользователю (см. FAILED-строки).
+          connectiontimeout: 5000
+          timeout: 10000
+          writetimeout: 5000
           starttls:
             enable: false
 

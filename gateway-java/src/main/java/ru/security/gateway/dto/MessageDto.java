@@ -18,10 +18,14 @@ public class MessageDto {
   private OffsetDateTime createdAt;
   private String cleanText;
   private String normalizedText;
+  /** Исходник EML как пришёл (декодирован UTF-8, обрезан) — для шторки инцидента. */
+  private String rawText;
   private List<LinkDto> links;
   private List<AttachmentDto> attachments;
   /** Лёгкий счётчик для списка (деталка несёт полный attachments). */
   private int attachmentCount;
+  /** Последняя ошибка доставки/релея из delivery_logs (для FAILED-строк в Отправленных). */
+  private String lastError;
   private List<DeliveryDto> deliveries;
   private ThreatReportDto threat;
 
@@ -40,6 +44,8 @@ public class MessageDto {
     private String filename;
     private long sizeBytes;
     private String contentType;
+    /** Признак опасного вложения (exe/макрос/JS в PDF/скрипт) — из скана парсера. */
+    private boolean threat;
   }
 
   @Data
