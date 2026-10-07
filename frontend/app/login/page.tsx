@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
+import { LogoFull } from '@/components/Logo';
 
 const MAIL_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? 'corp-sec.ru';
 
@@ -42,7 +43,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-xl shadow p-6 flex flex-col gap-3">
-        <h1 className="text-xl font-bold text-blue-700 text-center">СейфМейл</h1>
+        <div className="flex justify-center">
+          <LogoFull />
+        </div>
         <div className="flex rounded-full bg-gray-100 p-1 text-sm">
           <button
             type="button"

@@ -199,7 +199,8 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
    повтор бэк режет 400). Подписи кодов — `frontend/lib/labels.ts` (категории, статусы,
    ссылки, причины, флаги, маршрут + `spellerSourceLabel`: Яндекс/смешанный алфавит/раскладка);
    секции шторки нумерованы этапами 1–5 как в письме ИБ; эмодзи запрещены — значки только SVG
-   (`components/icons.tsx`); бренд в UI — `СейфМейл`; тело карантина — `Номер письма`
+   (`components/icons.tsx`);    бренд в UI — `СейфМейл` + векторный логотип `components/Logo.tsx`
+   (`LogoMark` в шапках, `LogoFull` на `/login`, фавикон `app/icon.svg`); тело карантина — `Номер письма`
    вместо `Message-ID`.
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
   (`next.config.js rewrites`) — CORS на бэке не нужен. В compose

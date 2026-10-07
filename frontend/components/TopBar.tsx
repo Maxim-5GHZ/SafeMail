@@ -1,5 +1,7 @@
 'use client';
 
+import { LogoMark } from './Logo';
+
 interface Props {
   query: string;
   onQuery: (q: string) => void;
@@ -11,7 +13,10 @@ interface Props {
 export default function TopBar({ query, onQuery, email, role, onLogout }: Props) {
   return (
     <header className="h-14 flex items-center gap-4 px-4 bg-white border-b border-gray-200 shrink-0">
-      <div className="font-bold text-lg text-blue-700 whitespace-nowrap">СейфМейл</div>
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <LogoMark className="w-7 h-7" />
+        <span className="font-bold text-lg text-blue-700">СейфМейл</span>
+      </div>
       <input
         value={query}
         onChange={(e) => onQuery(e.target.value)}

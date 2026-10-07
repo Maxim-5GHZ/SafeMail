@@ -9,6 +9,7 @@ import Dashboard from './Dashboard';
 import QuarantineTab from './QuarantineTab';
 import Stopwords from './Stopwords';
 import OfficerAddresses from './OfficerAddresses';
+import { LogoMark } from '@/components/Logo';
 
 type Tab = 'quarantine' | 'overview' | 'settings';
 
@@ -95,7 +96,10 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-base-200">
       <div className="navbar bg-base-100 border-b">
-        <span className="font-bold text-lg text-error px-4">СейфМейл · Пульт ИБ</span>
+        <span className="font-bold text-lg text-error px-4 flex items-center gap-2">
+          <LogoMark className="w-7 h-7" />
+          СейфМейл · Пульт ИБ
+        </span>
         <span className="ml-auto flex items-center gap-3 px-4 text-sm">
           <a href="/inbox" className="link link-hover">
             Входящие
