@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/safemail}
+    username: ${SPRING_DATASOURCE_USERNAME:safemail}
+    password: ${SPRING_DATASOURCE_PASSWORD:safemail}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          lob:
+            non_contextual_creation: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  mail:
+    host: ${MAIL_RELAY_HOST:localhost}
+    port: ${MAIL_RELAY_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+mail:
+  domain: ${MAIL_DOMAIN:corp-sec.ru}
+
+smtp:
+  host: ${SMTP_HOST:0.0.0.0}
+  port: ${SMTP_PORT:2525}
+  submission-port: ${SUBMISSION_PORT:2587}
+
+ml:
+  parser-url: ${PARSER_URL:http://localhost:8001}
+  enrich-url: ${ENRICH_URL:http://localhost:8002}
+  classify-url: ${CLASSIFY_URL:http://localhost:8003}
+
+app:
+  jwt-secret: ${JWT_SECRET:change-me-to-32-chars-minimum-secret-12345}
+  jwt-ttl-minutes: 720

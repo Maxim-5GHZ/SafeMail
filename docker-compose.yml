@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: safemail-pg
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-safemail}
+      POSTGRES_USER: ${POSTGRES_USER:-safemail}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safemail}
+    ports:
+      # Хост-порт наружу; внутри сети gateway ходит на postgres:5432 — не трогать.
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-safemail}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ml-parser:
+    build: ./ml-parser
+    container_name: safemail-parser
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+    restart: unless-stopped
+
+  ml-enrich:
+    build: ./ml-enrich
+    container_name: safemail-enrich
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+    restart: unless-stopped
+
+  ml-classify:
+    build: ./ml-classify
+    container_name: safemail-classify
+    ports:
+      - "8003:8003"
+    environment:
+      - PORT=8003
+      # Путь к GGUF-модели внутри контейнера. Если файла нет — работает rule-based fallback.
+      - MODEL_PATH=/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+    # Раскомментировать, когда скачана модель:
+    # volumes:
+    #   - ./models:/models:ro
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway-java
+    container_name: safemail-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-parser:
+        condition: service_started
+      ml-enrich:
+        condition: service_started
+      ml-classify:
+        condition: service_started
+    ports:
+      # Хост-порт API наружу; внутри сети frontend ходит на http://gateway:8080 — не трогать.
+      - "${GATEWAY_HOST_PORT:-8080}:8080"
+      # SMTP: 2525 — дебаг без root, в проде маппить 25->2525 и 587->2587
+      - "2525:2525"
+      - "2587:2587"
+    environment:
+      - MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-safemail}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-safemail}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-safemail}
+      - SMTP_PORT=2525
+      - SUBMISSION_PORT=2587
+      - PARSER_URL=http://ml-parser:8001
+      - ENRICH_URL=http://ml-enrich:8002
+      - CLASSIFY_URL=http://ml-classify:8003
+      - JWT_SECRET=${JWT_SECRET:-change-me-to-32-chars-minimum-secret}
+      # Исходящий relay (MVP-фейк): чистые письма и карантин уходят сюда
+      - MAIL_RELAY_HOST=mailhog
+      - MAIL_RELAY_PORT=1025
+    restart: unless-stopped
+
+  # MVP-почтовик: ловит relay-отправку gateway (SMTP :1025, веб-просмотр :8025)
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: safemail-mailhog
+    ports:
+      - "8025:8025"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: safemail-frontend
+    depends_on:
+      - gateway
+    ports:
+      # UI: /login, /inbox, /admin
+      - "3008:3008"
+    environment:
+      # Серверный прокси /backend/* -> gateway (браузер ходит same-origin, CORS не нужен)
+      - BACKEND_URL=http://gateway:8080
+      - NEXT_PUBLIC_MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -1,0 +1,39 @@
+# Локальное окружение (секреты!) — только .env.example в репо
+.env
+!.env.example
+
+# Java / Maven
+gateway-java/target/
+*.class
+*.jar
+*.war
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+frontend/tsconfig.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Модели и данные
+models/
+*.gguf
+*.bin
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore.local
