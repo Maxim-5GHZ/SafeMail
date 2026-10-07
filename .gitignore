@@ -28,6 +28,9 @@ models/
 *.gguf
 *.bin
 
+# TLS-ключи nginx (генерируются ./nginx/gen-certs.sh, только на хосте!)
+nginx/certs/
+
 # IDE / OS
 .idea/
 .vscode/

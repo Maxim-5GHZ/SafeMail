@@ -165,11 +165,17 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
 
 ## 7. Docker / Env
 
-`docker-compose.yml`: `postgres, ml-parser, ml-enrich, ml-classify, gateway, mailhog, frontend`.
+`docker-compose.yml`: `postgres, ml-parser, ml-enrich, ml-classify, gateway, mailhog, frontend, nginx`.
 Переменные — `.env.example`: `MAIL_DOMAIN, POSTGRES_*, *_URL, JWT_SECRET,
-POSTGRES_HOST_PORT, GATEWAY_HOST_PORT, BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
-Хост-порты наружу параметризованы (`5432/8080` по умолчанию) — внутри сети
+POSTGRES_HOST_PORT, GATEWAY_HOST_PORT, NGINX_HTTP_PORT, NGINX_HTTPS_PORT,
+BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
+Хост-порты наружу параметризованы (`5432/8080/80/443` по умолчанию) — внутри сети
 всё ходит по стандартным портам.
+`nginx` (:80→301, :443 TLS) — терминация HTTPS перед `frontend`
+(`client_max_body_size 25m`, HMR-websocket проксируется); серты —
+самоподпись OpenSSL via `nginx/gen-certs.sh` (`CN=localhost`,
+`SAN: localhost, *.corp-sec.ru, 127.0.0.1`), ключ только на хосте
+(`nginx/certs/` в `.gitignore`, в репо не коммитить).
 `mailhog` (:1025 SMTP, :8025 веб) — MVP-relay: сюда уходят чистые письма
 и карантин (`MAIL_RELAY_HOST=mailhog`). Без relay доставка падает в `FAILED`.
 В песочнице без сети `docker build` может не тянуть PyPI — это ок,
