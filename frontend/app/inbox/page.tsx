@@ -9,7 +9,7 @@ import { ApiError, listMessages } from '@/lib/api';
 import { formatDate, snippet } from '@/lib/format';
 import { categoryLabel } from '@/lib/labels';
 import { loadRead, loadStarred, markRead, toggleStarred } from '@/lib/marks';
-import { StarIcon, ClipIcon } from '@/components/icons';
+import { StarIcon, ClipIcon, RefreshIcon } from '@/components/icons';
 import type { MessageDto, Page } from '@/lib/types';
 import ReaderView from './ReaderView';
 import ComposeWindow from './ComposeWindow';
@@ -128,7 +128,7 @@ export default function InboxPage() {
               <button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
-                className="px-2 py-0.5 rounded hover:bg-gray-100 disabled:opacity-30"
+                className="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-30 disabled:hover:bg-transparent"
                 title="Новее"
               >
                 ‹
@@ -136,13 +136,13 @@ export default function InboxPage() {
               <button
                 onClick={() => setPage((p) => (totalPages === 0 || p + 1 >= totalPages ? p : p + 1))}
                 disabled={totalPages === 0 || page + 1 >= totalPages}
-                className="px-2 py-0.5 rounded hover:bg-gray-100 disabled:opacity-30"
+                className="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-30 disabled:hover:bg-transparent"
                 title="Раньше"
               >
                 ›
               </button>
-              <button onClick={load} className="px-2 py-0.5 rounded hover:bg-gray-100" title="Обновить">
-                ⟳
+              <button onClick={load} className="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 inline-flex items-center" title="Обновить" aria-label="Обновить">
+                <RefreshIcon className="w-4 h-4" />
               </button>
             </div>
             {error && <div className="mx-4 mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}

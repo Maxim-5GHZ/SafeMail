@@ -22,13 +22,20 @@ export function ClipIcon({ className = 'w-4 h-4' }: { className?: string }) {
     </svg>
   );
 }
-
 export function WarnIcon({ className = 'w-4 h-4' }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className={className} aria-hidden>
       <path d="M8 1.5L15 14H1z" strokeLinejoin="round" />
       <path d="M8 6v3.5" strokeLinecap="round" />
       <circle cx="8" cy="12" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function RefreshIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden>
+      <path d="M13.5 8a5.5 5.5 0 11-1.6-3.9M13.5 1.5v3h-3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

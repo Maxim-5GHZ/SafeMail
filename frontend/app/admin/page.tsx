@@ -101,7 +101,7 @@ export default function AdminPage() {
           СейфМейл · Пульт ИБ
         </span>
         <span className="ml-auto flex items-center gap-3 px-4 text-sm">
-          <a href="/inbox" className="link link-hover">
+          <a href="/inbox" className="px-3 py-1 rounded-full bg-base-200 hover:bg-base-300">
             Входящие
           </a>
           <button
@@ -109,7 +109,7 @@ export default function AdminPage() {
               logout();
               router.replace('/login');
             }}
-            className="link link-hover"
+            className="px-3 py-1 rounded-full bg-base-200 hover:bg-base-300"
           >
             Выйти
           </button>
@@ -118,13 +118,13 @@ export default function AdminPage() {
 
       <div className="p-4 flex flex-col gap-3">
         <div className="tabs tabs-boxed bg-base-100 shadow self-start" role="tablist" aria-label="Разделы пульта ИБ">
-          <button role="tab" aria-selected={tab === 'quarantine'} onClick={() => setTab('quarantine')} className={`tab ${tab === 'quarantine' ? 'tab-active' : ''}`}>
+          <button role="tab" aria-selected={tab === 'quarantine'} onClick={() => setTab('quarantine')} className={`tab ${tab === 'quarantine' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
             Карантин{stats && ` · ${quarantineCount}`}
           </button>
-          <button role="tab" aria-selected={tab === 'overview'} onClick={() => setTab('overview')} className={`tab ${tab === 'overview' ? 'tab-active' : ''}`}>
+          <button role="tab" aria-selected={tab === 'overview'} onClick={() => setTab('overview')} className={`tab ${tab === 'overview' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
             Обзор
           </button>
-          <button role="tab" aria-selected={tab === 'settings'} onClick={() => setTab('settings')} className={`tab ${tab === 'settings' ? 'tab-active' : ''}`}>
+          <button role="tab" aria-selected={tab === 'settings'} onClick={() => setTab('settings')} className={`tab ${tab === 'settings' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
             Настройки
           </button>
         </div>

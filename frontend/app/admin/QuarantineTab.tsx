@@ -144,7 +144,7 @@ export default function QuarantineTab({
               role="tab"
               aria-selected={box === b}
               onClick={() => setBox(b)}
-              className={`tab ${box === b ? 'tab-active' : ''}`}
+              className={`tab ${box === b ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}
             >
               {b === 'REROUTED' ? 'В карантине' : 'Отправлено в ИБ'} · <b>{boxCount(b)}</b>
             </button>
@@ -159,7 +159,7 @@ export default function QuarantineTab({
               <button
                 key={c}
                 onClick={() => setCategory(active ? '' : c)}
-                className={`badge gap-1 cursor-pointer ${active ? 'badge-error text-white' : 'badge-outline'}`}
+                className={`badge gap-1 cursor-pointer ${active ? 'badge-error text-white' : 'badge-outline bg-base-100 hover:bg-base-200'}`}
                 title={active ? `Сбросить фильтр «${categoryLabel(c)}»` : `Показать «${categoryLabel(c)}» в таблице`}
               >
                 {categoryLabel(c)} · <b>{n}</b>
@@ -242,7 +242,7 @@ export default function QuarantineTab({
         >
           ›
         </button>
-        <button onClick={() => loadRef.current()} className="btn btn-sm btn-ghost">
+        <button onClick={() => loadRef.current()} className="btn btn-sm btn-outline">
           Обновить
         </button>
       </div>
