@@ -60,6 +60,15 @@ export function actionLabel(a: string | null | undefined): string {
   return ACTION_LABELS[a] ?? a;
 }
 
+/** Источник правки спеллера enrich → русский показ (старые записи — без источника). */
+export function spellerSourceLabel(s: string | null | undefined): string {
+  if (!s) return '—';
+  if (s === 'yandex') return 'Яндекс';
+  if (s === 'mixed-alphabet') return 'смешанный алфавит';
+  if (s === 'layout') return 'раскладка';
+  return '—';
+}
+
 /** Префиксы эвристических флагов classify: категория/стоп-слово/мат → русский показ. */
 const FLAG_CATS: Record<string, ThreatCategory> = {
   terrorism: 'TERRORISM',
@@ -69,6 +78,8 @@ const FLAG_CATS: Record<string, ThreatCategory> = {
 };
 
 export function flagLabel(f: string): string {
+  const hidden = /^hidden-chars:(\d+)$/.exec(f);
+  if (hidden) return `скрытые символы: ${hidden[1]}`;
   const m = /^(stopword|profanity|terrorism|man_made|illegal_actions|other_threat):(.*)$/i.exec(f);
   if (!m) return 'маркер';
   const head = m[1].toLowerCase();

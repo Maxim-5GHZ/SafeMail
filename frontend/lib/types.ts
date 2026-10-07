@@ -43,6 +43,8 @@ export interface DeliveryDto {
 export interface SpellerFix {
   original: string;
   suggested: string;
+  /** Источник правки enrich: yandex | mixed-alphabet | layout (старые записи — без него). */
+  source?: string;
 }
 
 export interface ThreatReportDto {

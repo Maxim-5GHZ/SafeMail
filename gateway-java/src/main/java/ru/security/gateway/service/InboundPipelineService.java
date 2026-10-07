@@ -219,7 +219,10 @@ public class InboundPipelineService {
     double conf = num(verdict, "confidence");
     double hscore = num(verdict, "heuristic_score");
     @SuppressWarnings("unchecked")
-    List<String> flags = (List<String>) verdict.getOrDefault("heuristic_flags", List.of());
+    List<String> flags = new ArrayList<>((List<String>) verdict.getOrDefault("heuristic_flags", List.of()));
+    // Сигналы enrich (снятая маскировка) — в общий набор маркеров отчёта.
+    int hiddenChars = (int) num(enriched, "hidden_chars_removed");
+    if (hiddenChars > 0) flags.add("hidden-chars:" + hiddenChars);
     String explanation = str(verdict, "explanation");
 
     MessageThreatAnalysis ta = analysisRepo.findByMessageId(id).orElse(
@@ -373,15 +376,17 @@ public class InboundPipelineService {
     String[] dest = rulesRepo.findByCategory(cat)
         .map(ThreatRoutingRule::getDestinationEmails)
         .orElseGet(() -> new String[]{"infosec@" + mailDomain});
+    MessageParsedData pd = parsedRepo.findByMessageId(msg.getId()).orElse(null);
+    MessageThreatAnalysis ta = analysisRepo.findByMessageId(msg.getId()).orElse(null);
+    List<MessageLink> links = linkRepo.findByMessageId(msg.getId());
+    String body = buildQuarantineBody(msg, cat, pd, ta, links);
     try {
       for (String d : dest) {
         var out = mailSender.createMimeMessage();
         out.setFrom(msg.getSenderEmail());
         out.setRecipients(jakarta.mail.Message.RecipientType.TO, d);
         out.setSubject("[КАРАНТИН · " + categoryLabel(cat) + "] " + (msg.getSubject() == null ? "" : msg.getSubject()));
-        out.setText("Перехвачено шлюзом СейфМейл.\nКатегория: " + categoryLabel(cat)
-            + "\nИсходный получатель: " + msg.getRecipientEmail()
-            + "\nНомер письма: " + msg.getId(), "UTF-8");
+        out.setText(body, "UTF-8");
         mailSender.send(out);
       }
       deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
@@ -393,6 +398,164 @@ public class InboundPipelineService {
           .destinationRecipients(dest).smtpResponse("failed: " + e.getMessage()).success(false).build());
       throw new RuntimeException(e);
     }
+  }
+
+  /** Русская подпись источника правки спеллера (enrich: yandex|mixed-alphabet|layout). */
+  static String spellerSourceLabel(String source) {
+    if (source == null) return "—";
+    return switch (source.trim().toLowerCase()) {
+      case "yandex" -> "Яндекс";
+      case "mixed-alphabet" -> "смешанный алфавит";
+      case "layout" -> "раскладка";
+      default -> "—";
+    };
+  }
+
+  static String linkStatusLabel(LinkStatus s) {
+    if (s == null) return "не проверена";
+    return switch (s) {
+      case SAFE -> "безопасная";
+      case SUSPICIOUS -> "подозрительная";
+      case MALICIOUS -> "вредоносная";
+      case UNCHECKED -> "не проверена";
+    };
+  }
+
+  static String linkReasonLabel(String r) {
+    if (r == null) return "прочий признак";
+    if (r.equals("ip-in-host")) return "адрес вместо имени";
+    if (r.equals("obfuscated-host")) return "маскировка имени";
+    if (r.equals("suspicious-tld")) return "подозрительная зона";
+    if (r.equals("no-tls")) return "без шифрования";
+    if (r.equals("long-url")) return "слишком длинная";
+    if (r.startsWith("blacklist-hint:")) return "чёрный список: " + r.substring("blacklist-hint:".length());
+    return "прочий признак";
+  }
+
+  @SuppressWarnings("unchecked")
+  static List<Map<String, String>> parseSpellerFixes(String json) {
+    if (json == null || json.isBlank()) return List.of();
+    try {
+      Object parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, List.class);
+      if (!(parsed instanceof List<?> list)) return List.of();
+      List<Map<String, String>> out = new ArrayList<>();
+      for (Object o : list) {
+        if (o instanceof Map<?, ?> m) {
+          Map<String, String> fix = new LinkedHashMap<>();
+          m.forEach((k, v) -> fix.put(String.valueOf(k), v == null ? "" : String.valueOf(v)));
+          if (fix.containsKey("original") && fix.containsKey("suggested")) out.add(fix);
+        }
+      }
+      return out;
+    } catch (Exception e) {
+      return List.of();
+    }
+  }
+
+  /**
+   * Официальное заключение для безопасников: 5 этапов строго в порядке
+   * реального пайплайна. Этап 2 (спеллер) идёт раньше алгоритмов — иначе
+   * маскировка прячет угрозу; это сказано в тексте прямо.
+   */
+  static String buildQuarantineBody(Message msg, ThreatCategory cat,
+      MessageParsedData pd, MessageThreatAnalysis ta, List<MessageLink> links) {
+    StringBuilder b = new StringBuilder();
+    b.append("ЗАКЛЮЧЕНИЕ ШЛЮЗА СЕЙФМЕЙЛ № ").append(msg.getId()).append("\n");
+    b.append("Письмо перехвачено и не доставлено получателю. Проверка идёт строго по порядку: ");
+    b.append("сначала восстанавливаем слова (спеллер и деобфускация), и только потом работают ");
+    b.append("алгоритмы, — иначе маскировка прячет угрозу.\n");
+    b.append("\nЭТАП 1. ПРИЁМ И РАЗБОР\n");
+    b.append("Отправитель: ").append(nz(msg.getSenderEmail())).append("\n");
+    b.append("Получатель: ").append(nz(msg.getRecipientEmail())).append("\n");
+    b.append("Тема: ").append(msg.getSubject() == null || msg.getSubject().isBlank() ? "(без темы)" : msg.getSubject()).append("\n");
+    b.append("Номер письма: ").append(msg.getId()).append("\n");
+    int attCount = pd == null ? 0 : pd.getAttachmentsCount();
+    int linkCount = links == null ? 0 : links.size();
+    b.append("Вложений: ").append(attCount).append(". Ссылок: ").append(linkCount).append(".\n");
+
+    List<Map<String, String>> fixes = parseSpellerFixes(ta == null ? null : ta.getSpellerFixes());
+    long layoutCount = fixes.stream().filter(f -> "layout".equalsIgnoreCase(f.getOrDefault("source", ""))).count();
+    b.append("\nЭТАП 2. СПЕЛЛЕР (восстановление слов)\n");
+    if (fixes.isEmpty()) {
+      b.append("Исправлений не потребовалось.\n");
+    } else {
+      for (Map<String, String> f : fixes) {
+        b.append("«").append(f.get("original")).append("» → «").append(f.get("suggested")).append("»");
+        b.append(" (источник: ").append(spellerSourceLabel(f.get("source"))).append(").\n");
+      }
+    }
+
+    b.append("\nЭТАП 3. ДЕОБФУСКАЦИЯ (снятие маскировки)\n");
+    int hidden = 0;
+    List<String> flagList = new ArrayList<>();
+    if (ta != null && ta.getHeuristicFlags() != null) {
+      for (String fl : ta.getHeuristicFlags()) {
+        if (fl != null) {
+          flagList.add(fl);
+          if (fl.startsWith("hidden-chars:")) {
+            try { hidden = Integer.parseInt(fl.substring("hidden-chars:".length())); }
+            catch (NumberFormatException ignored) { }
+          }
+        }
+      }
+    }
+    b.append("Скрытых символов срезано: ").append(hidden).append(".\n");
+    b.append("Подмен раскладки клавиатуры: ").append(layoutCount).append(" (см. этап 2).\n");
+    String normalized = pd == null || pd.getNormalizedText() == null ? "" : pd.getNormalizedText();
+    b.append("Нормализованный текст:\n").append(normalized.isBlank() ? "(пусто)" : normalized).append("\n");
+
+    b.append("\nЭТАП 4. ПРОВЕРКА ССЫЛОК\n");
+    if (links == null || links.isEmpty()) {
+      b.append("Ссылок в письме нет.\n");
+    } else {
+      for (MessageLink l : links) {
+        b.append(l.getUrl() == null ? "" : l.getUrl());
+        b.append(" — ").append(linkStatusLabel(l.getStatus()));
+        if (l.getReputationScore() != null) b.append(", оценка ").append(l.getReputationScore()).append("%");
+        List<String> reasons = parseLinkReasons(l.getDetails());
+        if (!reasons.isEmpty()) {
+          b.append(". Причины: ");
+          List<String> ru = new ArrayList<>();
+          for (String r : reasons) ru.add(linkReasonLabel(r));
+          b.append(String.join("; ", ru));
+        }
+        b.append(".\n");
+      }
+    }
+
+    b.append("\nЭТАП 5. ВЕРДИКТ\n");
+    b.append("Категория: ").append(categoryLabel(cat)).append(".\n");
+    if (ta != null && ta.getLlmConfidence() != null) {
+      b.append("Уверенность: ").append(Math.round(ta.getLlmConfidence().doubleValue() * 100)).append("%.\n");
+    }
+    if (ta != null && ta.getHeuristicScore() != null) {
+      b.append("Эвристическая оценка: ").append(ta.getHeuristicScore()).append(".\n");
+    }
+    if (!flagList.isEmpty()) b.append("Маркеры: ").append(String.join(", ", flagList)).append(".\n");
+    if (ta != null && ta.getExplanation() != null && !ta.getExplanation().isBlank()) {
+      b.append("Обоснование: ").append(ta.getExplanation().strip()).append("\n");
+    }
+    return b.toString();
+  }
+
+  static List<String> parseLinkReasons(String detailsJson) {
+    if (detailsJson == null || detailsJson.isBlank()) return List.of();
+    try {
+      Map<?, ?> m = new com.fasterxml.jackson.databind.ObjectMapper().readValue(detailsJson, Map.class);
+      Object r = m.get("reasons");
+      if (r instanceof List<?> list) {
+        List<String> out = new ArrayList<>();
+        for (Object o : list) if (o != null) out.add(String.valueOf(o));
+        return out;
+      }
+      return List.of();
+    } catch (Exception e) {
+      return List.of();
+    }
+  }
+
+  private static String nz(String s) {
+    return s == null ? "" : s;
   }
 
   private Map<String, Object> postJson(String url, Object body) {

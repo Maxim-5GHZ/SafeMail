@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ApiError, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { actionLabel, categoryLabel, flagLabel, linkReasonLabel, linkStatusLabel, routeLabel, statusLabel } from '@/lib/labels';
+import { actionLabel, categoryLabel, flagLabel, linkReasonLabel, linkStatusLabel, routeLabel, spellerSourceLabel, statusLabel } from '@/lib/labels';
 import { CloseIcon } from '@/components/icons';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
@@ -22,7 +22,11 @@ function asSpellerFixes(v: unknown): SpellerFix[] {
       (x): x is Record<string, unknown> =>
         typeof x === 'object' && x !== null && 'original' in x && 'suggested' in x,
     )
-    .map((x) => ({ original: String(x.original), suggested: String(x.suggested) }));
+    .map((x) => ({
+      original: String(x.original),
+      suggested: String(x.suggested),
+      source: typeof x.source === 'string' ? x.source : undefined,
+    }));
 }
 
 function asReasons(details: unknown): string[] {
@@ -152,7 +156,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           </div>
         )}
 
-        <Section title="Триггеры в тексте">
+        <Section title="Этап 1 · Приём и разбор — триггеры и исходный текст">
           <div className="flex flex-wrap gap-1">
             {flags.length === 0 ? (
               <span className="text-sm text-gray-400">нет</span>
@@ -167,7 +171,10 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           <pre className="whitespace-pre-wrap text-sm font-sans bg-base-200 rounded-lg p-3">{highlightedClean}</pre>
         </Section>
 
-        <Section title="Спеллер: было → стало">
+        <Section title="Этап 2 · Спеллер — сначала восстанавливаем слова">
+          <p className="text-xs text-gray-500">
+            Спеллер идёт раньше алгоритмов: иначе маскировка прячет угрозу.
+          </p>
           {fixes.length === 0 ? (
             <span className="text-sm text-gray-400">исправлений нет</span>
           ) : (
@@ -176,6 +183,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                 <tr>
                   <th>Было</th>
                   <th>Стало</th>
+                  <th>Источник</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,6 +191,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                   <tr key={i}>
                     <td className="text-red-600">{f.original}</td>
                     <td className="text-green-700">{f.suggested}</td>
+                    <td className="text-gray-500">{spellerSourceLabel(f.source)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -190,11 +199,11 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           )}
         </Section>
 
-        <Section title="Нормализованный текст (деобфускация)">
+        <Section title="Этап 3 · Деобфускация — нормализованный текст">
           <pre className="whitespace-pre-wrap text-sm font-sans bg-base-200 rounded-lg p-3">{highlightedNorm}</pre>
         </Section>
 
-        <Section title={`Ссылки (${msg.links.length})`}>
+        <Section title={`Этап 4 · Проверка ссылок (${msg.links.length})`}>
           {msg.links.length === 0 ? (
             <span className="text-sm text-gray-400">ссылок нет</span>
           ) : (
@@ -222,7 +231,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           )}
         </Section>
 
-        <Section title="Обоснование ИИ">
+        <Section title="Этап 5 · Вердикт">
           <p className="text-sm">{msg.threat?.explanation || '—'}</p>
           {msg.threat?.heuristicScore != null && (
             <span className="text-xs text-gray-500">

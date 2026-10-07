@@ -93,7 +93,11 @@ src/main/java/ru/security/gateway/
   Тема письма обязательно входит в enrich/classify-вход
   (`subject + cleanText + attachments`), иначе угроза только в теме не ловится.
 - Чистая доставка — оригинальными байтами (`new MimeMessage(session, stream)`),
-  карантинная — новое письмо с `[КАРАНТИН · <русская категория>]` + `delivery_logs`.
+  карантинная — официальное «ЗАКЛЮЧЕНИЕ ШЛЮЗА СЕЙФМЕЙЛ № <id>»
+  (`buildQuarantineBody`, 5 этапов строго в порядке пайплайна: приём →
+  спеллер с источниками → деобфускация → ссылки словами → вердикт;
+  в тексте прямо сказано, что спеллер раньше алгоритмов, иначе маскировка
+  прячет угрозу) + `delivery_logs`.
 
 ## 4. Python ML (`ml-parser/`, `ml-enrich/`, `ml-classify/`)
 
@@ -104,9 +108,15 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
 - **parser** `POST /internal/parse-extract {raw_base64}` →
   `{clean_text, attachments[{filename,content_type,content_base64}], links[{url}]}`.
 - **enrich** `POST /internal/normalize-enrich {text, urls}` →
-  `{normalized_text, speller_fixes[{original,suggested}], links[{url,is_phishing,risk_score}]}`.
+  `{normalized_text, speller_fixes[{original,suggested,source}], links[{url,is_phishing,risk_score}], hidden_chars_removed}`.
   URL транслитерировать **запрещено** (резать текст по URL, нормализовать
-  только куски). Скоринг: IP +50, хит чёрного списка +30/+15, без TLS +10.
+  только куски). `source`: `yandex` (внешний API, текст уходит наружу) |
+  `mixed-alphabet` (латиница+кириллица в слове) | `layout` (строго: чисто
+  латинский токен, осмысленный после EN→RU-перекладки — проверка точным
+  вхождением в `COMMON_RU_WORDS`; английские слова не трогаем, они идут
+  обычным транслитом; ограничение зафиксировано). Zero-width (`U+200B/C/D`,
+  `U+FEFF`) режется сразу по всему тексту, счётчик — `hidden_chars_removed`,
+  gateway дописывает флаг `hidden-chars:N` в `heuristic_flags`. Скоринг: IP +50, хит чёрного списка +30/+15, без TLS +10.
 - **classify** `POST /internal/classify-threat {text, stopwords?[{pattern,category}]}` →
   `{category, confidence, explanation, heuristic_score, heuristic_flags}`.
   Управляемые стоп-слова из PG (`threat_stopwords`): подстрока без учёта регистра
@@ -187,7 +197,8 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
    бейдж статуса: `В карантине`/`Отправлено в ИБ`; выпуск активен в обоих ящиках
    (из `FORWARDED` тоже разрешён), кнопка форварда — только в `REROUTED` (одноразовый,
    повтор бэк режет 400). Подписи кодов — `frontend/lib/labels.ts` (категории, статусы,
-   ссылки, причины, флаги, маршрут); эмодзи запрещены — значки только SVG
+   ссылки, причины, флаги, маршрут + `spellerSourceLabel`: Яндекс/смешанный алфавит/раскладка);
+   секции шторки нумерованы этапами 1–5 как в письме ИБ; эмодзи запрещены — значки только SVG
    (`components/icons.tsx`); бренд в UI — `СейфМейл`; тело карантина — `Номер письма`
    вместо `Message-ID`.
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
