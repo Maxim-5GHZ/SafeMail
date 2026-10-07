@@ -358,6 +358,17 @@ public class InboundPipelineService {
     return new ArrayList<>(dest);
   }
 
+  /** Русская подпись категории для писем людям (тема/тело карантина). Коды API не меняет. */
+  static String categoryLabel(ThreatCategory cat) {
+    return switch (cat) {
+      case TERRORISM -> "Терроризм";
+      case MAN_MADE -> "Техногенная угроза";
+      case ILLEGAL_ACTIONS -> "Противоправные действия";
+      case OTHER_THREAT -> "Прочая угроза";
+      case NONE -> "Чисто";
+    };
+  }
+
   private void reroute(Message msg, ThreatCategory cat) {
     String[] dest = rulesRepo.findByCategory(cat)
         .map(ThreatRoutingRule::getDestinationEmails)
@@ -367,8 +378,8 @@ public class InboundPipelineService {
         var out = mailSender.createMimeMessage();
         out.setFrom(msg.getSenderEmail());
         out.setRecipients(jakarta.mail.Message.RecipientType.TO, d);
-        out.setSubject("[QUARANTINE " + cat + "] " + (msg.getSubject() == null ? "" : msg.getSubject()));
-        out.setText("Перехвачено шлюзом SafeMail.\nКатегория: " + cat
+        out.setSubject("[КАРАНТИН · " + categoryLabel(cat) + "] " + (msg.getSubject() == null ? "" : msg.getSubject()));
+        out.setText("Перехвачено шлюзом SafeMail.\nКатегория: " + categoryLabel(cat)
             + "\nИсходный получатель: " + msg.getRecipientEmail()
             + "\nMessage-ID: " + msg.getId(), "UTF-8");
         mailSender.send(out);

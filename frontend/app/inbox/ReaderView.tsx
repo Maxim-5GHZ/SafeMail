@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, downloadAttachment, getMessage, reprocessMessage } from '@/lib/api';
 import { formatDate, formatSize } from '@/lib/format';
 import type { MessageDto } from '@/lib/types';
+import { categoryLabel, statusLabel } from '@/lib/labels';
 import { TERMINAL_STATUSES } from '@/lib/types';
 
 interface Props {
@@ -22,7 +23,7 @@ function StatusBadge({ status }: { status: string }) {
         : status === 'REROUTED' || status === 'FAILED'
           ? 'bg-red-100 text-red-700'
           : 'bg-amber-100 text-amber-700';
-  return <span className={`text-xs px-2 py-0.5 rounded-full ${color}`}>{status}</span>;
+  return <span className={`text-xs px-2 py-0.5 rounded-full ${color}`}>{statusLabel(status)}</span>;
 }
 
 export default function ReaderView({ id, token, onBack, onChanged }: Props) {
@@ -120,12 +121,12 @@ export default function ReaderView({ id, token, onBack, onChanged }: Props) {
           </div>
           {analyzing && (
             <div className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-              Анализ выполняется… статус: {msg.status}
+              Анализ выполняется… статус: {statusLabel(msg.status)}
             </div>
           )}
           {msg.verdict && msg.verdict !== 'NONE' && (
             <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">
-              ⚠ Вердикт фильтра: <b>{msg.verdict}</b>
+              ⚠ Вердикт фильтра: <b>{categoryLabel(msg.verdict)}</b>
               {msg.threat?.confidence != null && (
                 <> — уверенность {(msg.threat.confidence * 100).toFixed(0)}%</>
               )}

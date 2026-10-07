@@ -6,13 +6,13 @@ import { formatDateTime } from '@/lib/format';
 import type { AdminStats, MessageDto, MessageStatus, Page, ThreatCategory } from '@/lib/types';
 import EngineerDrawer from './EngineerDrawer';
 
-const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
+import { CATS, categoryLabel } from '@/lib/labels';
 
 type Box = 'REROUTED' | 'FORWARDED';
 
 function VerdictBadge({ v }: { v: ThreatCategory | null }) {
-  if (!v || v === 'NONE') return <span className="badge badge-ghost">NONE</span>;
-  return <span className="badge badge-error text-white">{v}</span>;
+  if (!v || v === 'NONE') return <span className="badge badge-ghost">Чисто</span>;
+  return <span className="badge badge-error text-white">{categoryLabel(v)}</span>;
 }
 
 function TableSkeleton() {
@@ -159,9 +159,9 @@ export default function QuarantineTab({
                 key={c}
                 onClick={() => setCategory(active ? '' : c)}
                 className={`badge gap-1 cursor-pointer ${active ? 'badge-error text-white' : 'badge-outline'}`}
-                title={active ? `Сбросить фильтр ${c}` : `Показать ${c} в таблице`}
+                title={active ? `Сбросить фильтр «${categoryLabel(c)}»` : `Показать «${categoryLabel(c)}» в таблице`}
               >
-                {c} · <b>{n}</b>
+                {categoryLabel(c)} · <b>{n}</b>
                 {active && <span aria-hidden>✕</span>}
               </button>
             );
@@ -195,7 +195,7 @@ export default function QuarantineTab({
                   {category ? (
                     <span className="inline-flex items-center gap-2">
                       {box === 'REROUTED' ? 'В карантине нет писем категории' : 'В ИБ не отправляли писем категории'}{' '}
-                      {category}
+                      {categoryLabel(category)}
                       <button onClick={() => setCategory('')} className="btn btn-xs btn-outline">
                         Показать всё
                       </button>

@@ -81,9 +81,9 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="alert alert-error max-w-md">
-          <span>403 — раздел только для ИБ (роль ADMIN).</span>
+          <span>403 — раздел только для ИБ (нужна роль администратора).</span>
           <a href="/inbox" className="link link-hover">
-            В inbox
+            Во входящие
           </a>
         </div>
       </div>
@@ -95,10 +95,10 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-base-200">
       <div className="navbar bg-base-100 border-b">
-        <span className="font-bold text-lg text-error px-4">SafeMail · SOC</span>
+        <span className="font-bold text-lg text-error px-4">SafeMail · Пульт ИБ</span>
         <span className="ml-auto flex items-center gap-3 px-4 text-sm">
           <a href="/inbox" className="link link-hover">
-            Inbox
+            Входящие
           </a>
           <button
             onClick={() => {
@@ -113,7 +113,7 @@ export default function AdminPage() {
       </div>
 
       <div className="p-4 flex flex-col gap-3">
-        <div className="tabs tabs-boxed bg-base-100 shadow self-start" role="tablist" aria-label="Разделы SOC">
+        <div className="tabs tabs-boxed bg-base-100 shadow self-start" role="tablist" aria-label="Разделы пульта ИБ">
           <button role="tab" aria-selected={tab === 'quarantine'} onClick={() => setTab('quarantine')} className={`tab ${tab === 'quarantine' ? 'tab-active' : ''}`}>
             🚨 Карантин{stats && ` · ${quarantineCount}`}
           </button>

@@ -21,7 +21,7 @@ export default function TopBar({ query, onQuery, email, role, onLogout }: Props)
       <div className="ml-auto flex items-center gap-3">
         {role === 'ADMIN' && (
           <a href="/admin" className="text-sm px-3 py-1 rounded-full bg-red-100 text-red-700 hover:bg-red-200">
-            SOC
+            Пульт ИБ
           </a>
         )}
         <span className="text-sm text-gray-600 hidden sm:inline" title={email ?? ''}>

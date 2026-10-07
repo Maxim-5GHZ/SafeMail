@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ApiError, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
+import { actionLabel, categoryLabel, flagLabel, linkStatusLabel } from '@/lib/labels';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
 
@@ -40,7 +41,7 @@ function LinkStatusBadge({ s }: { s: string }) {
         : s === 'SAFE'
           ? 'badge-success'
           : 'badge-ghost';
-  return <span className={`badge ${cls}`}>{s}</span>;
+  return <span className={`badge ${cls}`}>{linkStatusLabel(s)}</span>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -124,7 +125,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
         <div className="flex items-start gap-2">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="badge badge-error text-white">{msg.threat?.category ?? msg.verdict ?? '?'}</span>
+              <span className="badge badge-error text-white">{categoryLabel(msg.threat?.category ?? msg.verdict)}</span>
               {msg.threat?.confidence != null && (
                 <span className="text-sm">уверенность {(msg.threat.confidence * 100).toFixed(0)}%</span>
               )}
@@ -157,7 +158,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
             ) : (
               flags.map((f, i) => (
                 <span key={i} className="badge badge-outline">
-                  {f}
+                  {flagLabel(f)}
                 </span>
               ))
             )}
@@ -204,7 +205,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                   <div className="text-xs break-all font-mono">{l.url}</div>
                   <div className="flex items-center gap-2 text-xs">
                     <LinkStatusBadge s={l.status} />
-                    <span>Threat Score: {score}%</span>
+                    <span>Оценка угрозы: {score}%</span>
                     <progress className="progress progress-error w-24" value={score} max={100} />
                   </div>
                   {reasons.length > 0 && (
@@ -224,7 +225,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           <p className="text-sm">{msg.threat?.explanation || '—'}</p>
           {msg.threat?.heuristicScore != null && (
             <span className="text-xs text-gray-500">
-              heuristic_score: {msg.threat.heuristicScore.toFixed(2)}
+              Эвристика: {msg.threat.heuristicScore.toFixed(2)}
             </span>
           )}
         </Section>
@@ -239,7 +240,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                   {msg.recipientEmail} → <b>{d.destinationRecipients.join(', ')}</b>
                 </div>
                 <div className="text-xs text-gray-500">
-                  {d.actionTaken} · {d.success ? 'успешно' : 'ОШИБКА'} ·{' '}
+                  {actionLabel(d.actionTaken)} · {d.success ? 'успешно' : 'ОШИБКА'} ·{' '}
                   {d.attemptedAt ? formatDate(d.attemptedAt) : '—'}
                   {d.smtpResponse ? ` · ${d.smtpResponse}` : ''}
                 </div>
@@ -249,7 +250,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
         </Section>
 
         <button onClick={reprocess} disabled={busy} className="btn btn-outline btn-sm">
-          {busy ? '…' : '⟳ Перепроверить (reprocess)'}
+          {busy ? '…' : '⟳ Перепроверить'}
         </button>
 
         {msg.status === 'REROUTED' || msg.status === 'FORWARDED' ? (

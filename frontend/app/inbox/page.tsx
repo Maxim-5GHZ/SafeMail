@@ -7,6 +7,7 @@ import Sidebar, { type Folder } from '@/components/Sidebar';
 import { useAuth } from '@/lib/auth';
 import { ApiError, listMessages } from '@/lib/api';
 import { formatDate, snippet } from '@/lib/format';
+import { categoryLabel } from '@/lib/labels';
 import { loadRead, loadStarred, markRead, toggleStarred } from '@/lib/marks';
 import type { MessageDto, Page } from '@/lib/types';
 import ReaderView from './ReaderView';
@@ -169,7 +170,7 @@ export default function InboxPage() {
                       >
                         ★
                       </button>
-                      {threat && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={m.verdict ?? ''} />}
+                      {threat && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={categoryLabel(m.verdict)} />}
                       <span className="w-44 shrink-0 truncate text-sm">
                         {folder === 'inbox' ? m.senderEmail : `→ ${m.recipientEmail}`}
                       </span>

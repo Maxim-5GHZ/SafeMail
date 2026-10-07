@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, listRules, updateRule } from '@/lib/api';
+import { CATS, categoryLabel } from '@/lib/labels';
 import type { RoutingRule, ThreatCategory } from '@/lib/types';
-
-const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -101,14 +100,14 @@ export default function OfficerAddresses({ token }: { token: string }) {
                 const isEditing = editing === c;
                 return (
                   <tr key={c}>
-                    <td className="font-mono whitespace-nowrap">{c}</td>
+                    <td className="whitespace-nowrap">{categoryLabel(c)}</td>
                     <td className="min-w-64">
                       {isEditing ? (
                         <textarea
                           value={draft}
                           onChange={(e) => setDraft(e.target.value)}
                           rows={Math.min(5, Math.max(2, draft.split('\n').length))}
-                          placeholder="soc@example.ru — по одному на строке (можно через запятую)"
+                          placeholder="soc@corp-sec.ru — по одному на строке (можно через запятую)"
                           className="textarea textarea-bordered textarea-xs w-full font-mono"
                         />
                       ) : (

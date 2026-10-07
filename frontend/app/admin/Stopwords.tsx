@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, createStopword, deleteStopword, listStopwords, updateStopword } from '@/lib/api';
+import { CATS, categoryLabel } from '@/lib/labels';
 import type { ThreatCategory, ThreatStopword } from '@/lib/types';
-
-const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
 
 /** Стоп-слова ИБ: подстрока (без учёта регистра) по нормализованному тексту → вердикт категории. */
 export default function Stopwords({ token }: { token: string }) {
@@ -55,7 +54,7 @@ export default function Stopwords({ token }: { token: string }) {
         </summary>
         <p className="mt-1">
           Совпадение подстроки в нормализованном тексте (обфускация уже снята) сразу даёт вердикт
-          категории с флагом <code>stopword:…</code>. Влияет на все новые письма после сохранения.
+          категории с флагом <code>стоп-слово: …</code>. Влияет на все новые письма после сохранения.
         </p>
       </details>
       {error && (
@@ -79,7 +78,7 @@ export default function Stopwords({ token }: { token: string }) {
         >
           {CATS.map((c) => (
             <option key={c} value={c}>
-              {c}
+              {categoryLabel(c)}
             </option>
           ))}
         </select>
@@ -125,7 +124,7 @@ export default function Stopwords({ token }: { token: string }) {
                       >
                         {CATS.map((c) => (
                           <option key={c} value={c}>
-                            {c}
+                            {categoryLabel(c)}
                           </option>
                         ))}
                       </select>

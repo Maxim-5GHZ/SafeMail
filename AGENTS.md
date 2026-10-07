@@ -93,7 +93,7 @@ src/main/java/ru/security/gateway/
   Тема письма обязательно входит в enrich/classify-вход
   (`subject + cleanText + attachments`), иначе угроза только в теме не ловится.
 - Чистая доставка — оригинальными байтами (`new MimeMessage(session, stream)`),
-  карантинная — новое письмо с `[QUARANTINE <CAT>]` + `delivery_logs`.
+  карантинная — новое письмо с `[КАРАНТИН · <русская категория>]` + `delivery_logs`.
 
 ## 4. Python ML (`ml-parser/`, `ml-enrich/`, `ml-classify/`)
 
