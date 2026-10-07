@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, listRules, updateRule } from '@/lib/api';
-import { CATS, categoryLabel } from '@/lib/labels';
+import { CATS, categoryLabel, severityDotClass } from '@/lib/labels';
 import type { RoutingRule, ThreatCategory } from '@/lib/types';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -67,6 +67,7 @@ export default function OfficerAddresses({ token }: { token: string }) {
 
   return (
     <div className="bg-base-100 rounded-xl shadow px-4 py-3 mb-4">
+      <h3 className="soc-panel-title mb-2">Адреса ИБ</h3>
       <details className="text-xs text-gray-500 mb-2">
         <summary className="cursor-pointer hover:text-gray-700">
           Адреса ИБ — куда уходит карантин (нажми — как работает)
@@ -100,7 +101,12 @@ export default function OfficerAddresses({ token }: { token: string }) {
                 const isEditing = editing === c;
                 return (
                   <tr key={c}>
-                    <td className="whitespace-nowrap">{categoryLabel(c)}</td>
+                    <td className="whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className={`inline-block w-2 h-2 rounded-full ${severityDotClass(c)}`} aria-hidden />
+                        {categoryLabel(c)}
+                      </span>
+                    </td>
                     <td className="min-w-64">
                       {isEditing ? (
                         <textarea
@@ -138,7 +144,7 @@ export default function OfficerAddresses({ token }: { token: string }) {
                         <button
                           onClick={() => startEdit(c)}
                           disabled={editing !== null}
-                          className="btn btn-ghost btn-xs"
+                          className="btn btn-outline btn-xs"
                         >
                           Изменить
                         </button>

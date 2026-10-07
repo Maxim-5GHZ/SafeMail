@@ -7,11 +7,11 @@ const PERIODS = [7, 14, 30];
 /** Ненулевой сегмент всегда виден (иначе карантин=1 при max=16 схлопывается в нитку). */
 const MIN_SEG_PX = 4;
 
-function Card({ title, value, accent }: { title: string; value: number; accent?: string }) {
+function Card({ title, value, top }: { title: string; value: number; top?: string }) {
   return (
-    <div className="bg-base-100 rounded-xl shadow px-4 py-3 min-w-0">
+    <div className={`bg-base-100 rounded-xl shadow px-4 py-3 min-w-0 border-t-2 ${top ?? 'border-t-base-300'}`}>
       <div className="text-xs text-gray-500 truncate">{title}</div>
-      <div className={`text-2xl font-bold ${accent ?? ''}`}>{value}</div>
+      <div className="text-2xl font-bold text-gray-800">{value}</div>
     </div>
   );
 }
@@ -60,10 +60,10 @@ export default function Dashboard({
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card title="Всего писем" value={stats.total} />
-        <Card title="Доставлено" value={stats.byStatus.DELIVERED ?? 0} accent="text-success" />
-        <Card title="Карантин" value={stats.byStatus.REROUTED ?? 0} accent="text-error" />
-        <Card title="Отправлено в ИБ" value={stats.byStatus.FORWARDED ?? 0} accent="text-info" />
-        <Card title="Ошибки" value={stats.byStatus.FAILED ?? 0} accent="text-warning" />
+        <Card title="Доставлено" value={stats.byStatus.DELIVERED ?? 0} top="border-t-success" />
+        <Card title="Карантин" value={stats.byStatus.REROUTED ?? 0} top="border-t-error" />
+        <Card title="Отправлено в ИБ" value={stats.byStatus.FORWARDED ?? 0} top="border-t-info" />
+        <Card title="Ошибки" value={stats.byStatus.FAILED ?? 0} top="border-t-warning" />
         <Card title="В очереди" value={queued} />
       </div>
 
@@ -80,17 +80,17 @@ export default function Dashboard({
             <span className="flex items-center gap-1">
               <span className="inline-block w-2.5 h-2.5 rounded-sm bg-error" /> карантин
             </span>
-            <span className="flex gap-1">
-              {PERIODS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => onDays(p)}
-                  className={`btn btn-xs ${days === p ? 'btn-primary' : 'btn-ghost'}`}
-                >
-                  {p}д
-                </button>
-              ))}
-            </span>
+              <span className="flex gap-1">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => onDays(p)}
+                    className={`btn btn-xs ${days === p ? 'btn-primary' : 'bg-base-200 hover:bg-base-300'}`}
+                  >
+                    {p}д
+                  </button>
+                ))}
+              </span>
           </span>
         </div>
         {stats.perDay.length === 0 ? (

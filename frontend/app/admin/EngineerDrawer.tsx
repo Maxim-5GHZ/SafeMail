@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ApiError, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { actionLabel, categoryLabel, flagLabel, linkReasonLabel, linkStatusLabel, routeLabel, spellerSourceLabel, statusLabel } from '@/lib/labels';
+import { actionLabel, categoryLabel, flagLabel, linkReasonLabel, linkStatusLabel, routeLabel, severityBorderClass, severityDotClass, spellerSourceLabel, statusLabel } from '@/lib/labels';
 import { CloseIcon } from '@/components/icons';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
@@ -52,8 +52,24 @@ function LinkStatusBadge({ s }: { s: string }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="font-semibold text-sm uppercase text-gray-500">{title}</h3>
+      <h3 className="soc-panel-title">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+/** Этап отчёта: нумерованный маркер + заголовок обычным регистром. */
+function Step({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <span className="w-6 h-6 rounded-full bg-neutral-800 text-white text-xs flex items-center justify-center shrink-0">
+        {n}
+      </span>
+      <div className="flex flex-col gap-2 min-w-0 flex-1">
+        <h3 className="soc-panel-title">{title}</h3>
+        {hint && <p className="soc-subtle -mt-1">{hint}</p>}
+        {children}
+      </div>
     </div>
   );
 }
@@ -128,24 +144,32 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative w-[560px] max-w-full bg-base-100 h-full overflow-y-auto shadow-2xl p-5 flex flex-col gap-5">
         <div className="flex items-start gap-2">
-          <div>
+          <div className={`flex-1 min-w-0 rounded-lg border border-base-300 border-l-4 ${severityBorderClass(msg.threat?.category ?? msg.verdict)} p-3 flex flex-col gap-2`}>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="badge badge-error text-white">{categoryLabel(msg.threat?.category ?? msg.verdict)}</span>
+              <span className="inline-flex items-center gap-1.5 font-semibold">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${severityDotClass(msg.threat?.category ?? msg.verdict)}`} aria-hidden />
+                {categoryLabel(msg.threat?.category ?? msg.verdict)}
+              </span>
               {msg.threat?.confidence != null && (
-                <span className="text-sm">уверенность {(msg.threat.confidence * 100).toFixed(0)}%</span>
+                <span className="text-sm text-gray-500">уверенность {(msg.threat.confidence * 100).toFixed(0)}%</span>
               )}
-              <span
-                className={`badge badge-sm ${msg.status === 'FORWARDED' ? 'badge-info text-white' : msg.status === 'REROUTED' ? 'badge-error text-white' : 'badge-ghost'}`}
-              >
+              <span className="badge badge-sm badge-outline ml-auto">
                 {msg.status === 'FORWARDED' ? 'Отправлено в ИБ' : msg.status === 'REROUTED' ? 'В карантине' : statusLabel(msg.status)}
               </span>
             </div>
-            <h2 className="font-bold mt-1">{msg.subject || '(без темы)'}</h2>
-            <div className="text-xs text-gray-500">
-              {msg.senderEmail} → <b>{msg.recipientEmail}</b> · {formatDate(msg.createdAt)}
+            <h2 className="font-bold">{msg.subject || '(без темы)'}</h2>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+              <span className="text-gray-500">От</span>
+              <span className="soc-artifact">{msg.senderEmail}</span>
+              <span className="text-gray-500">Кому</span>
+              <span className="soc-artifact">{msg.recipientEmail}</span>
+              <span className="text-gray-500">Дата</span>
+              <span>{formatDate(msg.createdAt)}</span>
+              <span className="text-gray-500">Номер</span>
+              <span className="soc-artifact">{msg.id}</span>
             </div>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-ghost ml-auto" title="Закрыть" aria-label="Закрыть">
+          <button onClick={onClose} className="btn btn-sm btn-ghost" title="Закрыть" aria-label="Закрыть">
             <CloseIcon />
           </button>
         </div>
@@ -156,25 +180,22 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           </div>
         )}
 
-        <Section title="Этап 1 · Приём и разбор — триггеры и исходный текст">
+        <Step n={1} title="Приём и разбор — триггеры и исходный текст">
           <div className="flex flex-wrap gap-1">
             {flags.length === 0 ? (
               <span className="text-sm text-gray-400">нет</span>
             ) : (
               flags.map((f, i) => (
-                <span key={i} className="badge badge-outline">
+                <span key={i} className="inline-flex items-center px-2 py-0.5 rounded border border-base-300 bg-base-100 text-xs text-gray-700">
                   {flagLabel(f)}
                 </span>
               ))
             )}
           </div>
-          <pre className="whitespace-pre-wrap text-sm font-sans bg-base-200 rounded-lg p-3">{highlightedClean}</pre>
-        </Section>
+          <pre className="whitespace-pre-wrap text-sm font-sans rounded-lg border border-base-300 p-3">{highlightedClean}</pre>
+        </Step>
 
-        <Section title="Этап 2 · Спеллер — сначала восстанавливаем слова">
-          <p className="text-xs text-gray-500">
-            Спеллер идёт раньше алгоритмов: иначе маскировка прячет угрозу.
-          </p>
+        <Step n={2} title="Спеллер — сначала восстанавливаем слова" hint="Спеллер идёт раньше алгоритмов: иначе маскировка прячет угрозу.">
           {fixes.length === 0 ? (
             <span className="text-sm text-gray-400">исправлений нет</span>
           ) : (
@@ -188,22 +209,22 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               </thead>
               <tbody>
                 {fixes.map((f, i) => (
-                  <tr key={i}>
-                    <td className="text-red-600">{f.original}</td>
-                    <td className="text-green-700">{f.suggested}</td>
-                    <td className="text-gray-500">{spellerSourceLabel(f.source)}</td>
+                  <tr key={i} className="border-t border-base-200">
+                    <td className="soc-artifact bg-red-50 text-red-900 px-2 py-1">{f.original}</td>
+                    <td className="soc-artifact bg-green-50 text-green-900 px-2 py-1">{f.suggested}</td>
+                    <td className="text-gray-500 text-xs px-2 py-1">{spellerSourceLabel(f.source)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </Section>
+        </Step>
 
-        <Section title="Этап 3 · Деобфускация — нормализованный текст">
-          <pre className="whitespace-pre-wrap text-sm font-sans bg-base-200 rounded-lg p-3">{highlightedNorm}</pre>
-        </Section>
+        <Step n={3} title="Деобфускация — нормализованный текст">
+          <pre className="whitespace-pre-wrap text-sm font-sans rounded-lg border border-base-300 p-3">{highlightedNorm}</pre>
+        </Step>
 
-        <Section title={`Этап 4 · Проверка ссылок (${msg.links.length})`}>
+        <Step n={4} title={`Проверка ссылок (${msg.links.length})`}>
           {msg.links.length === 0 ? (
             <span className="text-sm text-gray-400">ссылок нет</span>
           ) : (
@@ -211,12 +232,12 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               const score = l.reputationScore ?? 0;
               const reasons = asReasons(l.details);
               return (
-                <div key={i} className="card card-compact bg-base-200 p-3 flex flex-col gap-1">
-                  <div className="text-xs break-all font-mono">{l.url}</div>
+                <div key={i} className="rounded-lg border border-base-300 px-3 py-2 flex flex-col gap-1">
+                  <div className="soc-artifact text-xs">{l.url}</div>
                   <div className="flex items-center gap-2 text-xs">
                     <LinkStatusBadge s={l.status} />
-                    <span>Оценка угрозы: {score}%</span>
-                    <progress className="progress progress-error w-24" value={score} max={100} />
+                    <span className="text-gray-500">Оценка угрозы: {score}%</span>
+                    <progress className="progress progress-error w-20 h-1.5" value={score} max={100} />
                   </div>
                   {reasons.length > 0 && (
                     <ul className="text-xs text-gray-500 list-disc ml-4">
@@ -229,33 +250,56 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               );
             })
           )}
-        </Section>
+        </Step>
 
-        <Section title="Этап 5 · Вердикт">
-          <p className="text-sm">{msg.threat?.explanation || '—'}</p>
-          {msg.threat?.heuristicScore != null && (
-            <span className="text-xs text-gray-500">
-              Эвристика: {msg.threat.heuristicScore.toFixed(2)}
-            </span>
-          )}
-        </Section>
+        <Step n={5} title="Вердикт">
+          <div className={`rounded-lg border border-base-300 border-l-4 ${severityBorderClass(msg.threat?.category ?? msg.verdict)} px-3 py-2 flex flex-col gap-1`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-sm">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${severityDotClass(msg.threat?.category ?? msg.verdict)}`} aria-hidden />
+                {categoryLabel(msg.threat?.category ?? msg.verdict)}
+              </span>
+              {msg.threat?.confidence != null && (
+                <span className="text-xs text-gray-500">уверенность {(msg.threat.confidence * 100).toFixed(0)}%</span>
+              )}
+              {msg.threat?.heuristicScore != null && (
+                <span className="text-xs text-gray-500">эвристика: {msg.threat.heuristicScore.toFixed(2)}</span>
+              )}
+            </div>
+            {flags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {flags.map((f, i) => (
+                  <span key={i} className="inline-flex items-center px-2 py-0.5 rounded border border-base-300 bg-base-100 text-xs text-gray-700">
+                    {flagLabel(f)}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-sm">{msg.threat?.explanation || '—'}</p>
+          </div>
+        </Step>
 
         <Section title="Маршрут: кому предназначалось → куда ушло">
           {msg.deliveries.length === 0 ? (
             <span className="text-sm text-gray-400">записей доставки нет</span>
           ) : (
-            msg.deliveries.map((d, i) => (
-              <div key={i} className="text-sm bg-base-200 rounded-lg p-2">
-                <div>
-                  {msg.recipientEmail} → <b>{d.destinationRecipients.join(', ')}</b>
+            <div className="flex flex-col">
+              {msg.deliveries.map((d, i) => (
+                <div key={i} className="flex gap-2.5">
+                  <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${d.success ? 'bg-success' : 'bg-error'}`} aria-hidden />
+                  <div className="pb-3 text-sm">
+                    <div className="soc-artifact text-xs">
+                      {msg.recipientEmail} → <b>{d.destinationRecipients.join(', ')}</b>
+                    </div>
+                    <div className="soc-subtle">
+                      {actionLabel(d.actionTaken)} · {d.success ? 'успешно' : 'ошибка'} ·{' '}
+                      {d.attemptedAt ? formatDate(d.attemptedAt) : '—'}
+                      {routeLabel(d.smtpResponse) ? ` · ${routeLabel(d.smtpResponse)}` : ''}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {actionLabel(d.actionTaken)} · {d.success ? 'успешно' : 'ошибка'} ·{' '}
-                  {d.attemptedAt ? formatDate(d.attemptedAt) : '—'}
-                  {routeLabel(d.smtpResponse) ? ` · ${routeLabel(d.smtpResponse)}` : ''}
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </Section>
 
@@ -265,12 +309,12 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
 
         <div className="flex gap-2">
           {(msg.status === 'REROUTED' || msg.status === 'FORWARDED') && !confirmRelease && (
-            <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-outline btn-warning btn-sm flex-1">
+            <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-error btn-sm flex-1">
               Выпустить из карантина
             </button>
           )}
           {msg.status === 'REROUTED' && !confirmForward && (
-            <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-outline btn-info btn-sm flex-1">
+            <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-primary btn-sm flex-1">
               Отправить безопаснику
             </button>
           )}

@@ -69,6 +69,49 @@ export function spellerSourceLabel(s: string | null | undefined): string {
   return '—';
 }
 
+/** Шкала серьёзности категорий (цвет — только маркер угрозы, остальное нейтральное). */
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
+
+export function severityOf(c: ThreatCategory | null | undefined): Severity {
+  if (c === 'TERRORISM') return 'critical';
+  if (c === 'MAN_MADE') return 'high';
+  if (c === 'ILLEGAL_ACTIONS') return 'medium';
+  return 'low';
+}
+
+const SEVERITY_DOT: Record<Severity, string> = {
+  critical: 'bg-red-500',
+  high: 'bg-orange-500',
+  medium: 'bg-amber-500',
+  low: 'bg-slate-400',
+};
+
+const SEVERITY_BORDER: Record<Severity, string> = {
+  critical: 'border-l-red-500',
+  high: 'border-l-orange-500',
+  medium: 'border-l-amber-500',
+  low: 'border-l-slate-400',
+};
+
+const SEVERITY_TEXT: Record<Severity, string> = {
+  critical: 'text-red-700',
+  high: 'text-orange-700',
+  medium: 'text-amber-700',
+  low: 'text-slate-600',
+};
+
+export function severityDotClass(c: ThreatCategory | null | undefined): string {
+  return SEVERITY_DOT[severityOf(c)];
+}
+
+export function severityBorderClass(c: ThreatCategory | null | undefined): string {
+  return SEVERITY_BORDER[severityOf(c)];
+}
+
+export function severityTextClass(c: ThreatCategory | null | undefined): string {
+  return SEVERITY_TEXT[severityOf(c)];
+}
+
 /** Префиксы эвристических флагов classify: категория/стоп-слово/мат → русский показ. */
 const FLAG_CATS: Record<string, ThreatCategory> = {
   terrorism: 'TERRORISM',

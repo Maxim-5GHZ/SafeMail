@@ -7,13 +7,18 @@ import type { AdminStats, MessageDto, MessageStatus, Page, ThreatCategory } from
 import EngineerDrawer from './EngineerDrawer';
 import { CloseIcon } from '@/components/icons';
 
-import { CATS, categoryLabel } from '@/lib/labels';
+import { CATS, categoryLabel, severityDotClass } from '@/lib/labels';
 
 type Box = 'REROUTED' | 'FORWARDED';
 
 function VerdictBadge({ v }: { v: ThreatCategory | null }) {
-  if (!v || v === 'NONE') return <span className="badge badge-ghost">Чисто</span>;
-  return <span className="badge badge-error text-white">{categoryLabel(v)}</span>;
+  if (!v || v === 'NONE') return <span className="text-sm text-gray-400">Чисто</span>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm text-gray-800 whitespace-nowrap">
+      <span className={`inline-block w-2 h-2 rounded-full ${severityDotClass(v)}`} aria-hidden />
+      {categoryLabel(v)}
+    </span>
+  );
 }
 
 function TableSkeleton() {
@@ -159,9 +164,14 @@ export default function QuarantineTab({
               <button
                 key={c}
                 onClick={() => setCategory(active ? '' : c)}
-                className={`badge gap-1 cursor-pointer ${active ? 'badge-error text-white' : 'badge-outline bg-base-100 hover:bg-base-200'}`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${
+                  active
+                    ? 'bg-primary text-white border-primary font-medium'
+                    : 'border-base-300 bg-base-100 hover:bg-base-200 text-gray-700'
+                }`}
                 title={active ? `Сбросить фильтр «${categoryLabel(c)}»` : `Показать «${categoryLabel(c)}» в таблице`}
               >
+                <span className={`inline-block w-2 h-2 rounded-full ${active ? 'bg-white' : severityDotClass(c)}`} aria-hidden />
                 {categoryLabel(c)} · <b>{n}</b>
                 {active && <span aria-hidden className="inline-flex"><CloseIcon className="w-3 h-3" /></span>}
               </button>

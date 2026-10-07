@@ -9,3 +9,14 @@
 .msg-row.unread {
   @apply bg-white font-semibold;
 }
+
+/* SOC-тон: нейтральная база, цвет только маркером серьёзности. */
+.soc-panel-title {
+  @apply text-sm font-semibold text-gray-800;
+}
+.soc-artifact {
+  @apply font-mono break-all;
+}
+.soc-subtle {
+  @apply text-xs text-gray-500;
+}
