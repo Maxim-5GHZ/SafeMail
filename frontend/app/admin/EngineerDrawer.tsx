@@ -128,7 +128,11 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               {msg.threat?.confidence != null && (
                 <span className="text-sm">уверенность {(msg.threat.confidence * 100).toFixed(0)}%</span>
               )}
-              <span className="text-xs text-gray-400">{msg.status}</span>
+              <span
+                className={`badge badge-sm ${msg.status === 'FORWARDED' ? 'badge-info text-white' : msg.status === 'REROUTED' ? 'badge-error text-white' : 'badge-ghost'}`}
+              >
+                {msg.status === 'FORWARDED' ? 'Отправлено в ИБ' : msg.status === 'REROUTED' ? 'В карантине' : msg.status}
+              </span>
             </div>
             <h2 className="font-bold mt-1">{msg.subject || '(без темы)'}</h2>
             <div className="text-xs text-gray-500">
@@ -248,8 +252,8 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           {busy ? '…' : '⟳ Перепроверить (reprocess)'}
         </button>
 
-        {msg.status === 'REROUTED' &&
-          (confirmRelease ? (
+        {msg.status === 'REROUTED' || msg.status === 'FORWARDED' ? (
+          confirmRelease ? (
             <div className="flex flex-col gap-2 rounded-lg border border-warning p-3">
               <div className="text-sm">
                 Оригинал будет <b>доставлен {msg.recipientEmail}</b>. Действие пишется в аудит.
@@ -280,14 +284,16 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
             <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-warning btn-sm">
               ✓ Выпустить из карантина
             </button>
-          ))}
+          )
+        ) : null}
 
-        {msg.status === 'REROUTED' &&
-          (confirmForward ? (
+        {msg.status === 'REROUTED' || msg.status === 'FORWARDED' ? (
+          confirmForward ? (
             <div className="flex flex-col gap-2 rounded-lg border border-info p-3">
               <div className="text-sm">
                 Копия оригинала уйдёт <b>безопасникам по правилу категории</b> (см. «Адреса
-                ИБ»). Письмо остаётся в карантине, отправка пишется в аудит.
+                ИБ» в Настройках). Письмо сменит статус на <b>«Отправлено в ИБ»</b> и уйдёт
+                из карантина, отправка пишется в аудит.
               </div>
               <input
                 value={extraEmail}
@@ -323,7 +329,8 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
             <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-info btn-sm">
               ➤ Отправить безопаснику
             </button>
-          ))}
+          )
+        ) : null}
       </div>
     </div>
   );

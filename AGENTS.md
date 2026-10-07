@@ -13,7 +13,9 @@
 (подсветка фраз, спеллер, фишинг). Исходящее наружу не проверяется.
 
 Категории угроз (`threat_category`): `NONE`, `TERRORISM`, `MAN_MADE`,
-`ILLEGAL_ACTIONS`, `OTHER_THREAT`.
+`ILLEGAL_ACTIONS`, `OTHER_THREAT`. Статусы писем: `PENDING,IN_PROGRESS,PARSED,
+ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вручную
+отправлено безопасникам, получатель оригинала его не видел; `V6`).
 
 ## 2. Архитектура и порты
 
@@ -127,24 +129,26 @@ message_attachments | message_links | message_threat_analysis(final_verdict) |
 delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_claim.sql`,
 роль — `V3__user_role.sql`, нормализованный текст — `V4__normalized_text.sql`
 (`message_parsed_data.normalized_text`, пишется в `processOne` после enrich),
-стоп-слова — `V5__threat_stopwords.sql` (`pattern UNIQUE, category, is_active` + сиды).
+стоп-слова — `V5__threat_stopwords.sql` (`pattern UNIQUE, category, is_active` + сиды),
+статус отправки безопасникам — `V6__message_status_forwarded.sql`
+(`ALTER TYPE … ADD VALUE`, как `V2`).
 Сиды правил — `ON CONFLICT DO NOTHING`.
 Фильтр `?category=` — подзапросом `EXISTS` на `final_verdict`
 (в JPA связи `Message→analysis` нет).
 Админ-дашборд: `GET /api/v1/admin/stats?days=14` (только `ADMIN`,
 `days 1..90`, иначе 400 через `GlobalExceptionHandler`):
-`{total, byStatus, byCategory, byCategoryRerouted, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
+`{total, byStatus, byCategory, byCategoryRerouted, byCategoryForwarded, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
 `byStatus/byCategory` — за всё время (`GROUP BY`), `byCategoryRerouted` — вердикты только
-писем в `REROUTED` (native `JOIN … WHERE status=CAST('REROUTED'…)`, цифры = строкам SOC-таблицы),
-`perDay` — окно `days` (`date_trunc`, native SELECT, zero-fill всех дат окна).
+писем в `REROUTED`, `byCategoryForwarded` — только `FORWARDED` (native `JOIN … WHERE status=CAST(…)`),
+`perDay.rerouted` — весь карантинный трафик (`REROUTED+FORWARDED`, иначе отправленное исчезало бы из динамики).
 Ручной выпуск: `POST /api/v1/admin/messages/{id}/release {reason?≤500}` (только `ADMIN`):
-только из `REROUTED` (иначе 400), оригинал — исходному получателю, статус→`DELIVERED`,
+из `REROUTED`/`FORWARDED` (иначе 400), оригинал — исходному получателю, статус→`DELIVERED`,
 вердикт сохраняется, в `delivery_logs` — `RELEASED_BY_ADMIN` с email админа и причиной.
 Ручная отправка безопасникам: `POST /api/v1/admin/messages/{id}/forward {emails?[], reason?≤500}`
-(только `ADMIN`): только из `REROUTED` (иначе 400), получатели = адреса правила категории
-вердикта + `emails` (дедуп, пусто всё → fallback `infosec@<domain>`); содержимое — оригинал
-без изменений (только конверт получателей), статус остаётся `REROUTED`,
-в `delivery_logs` — `FORWARDED_TO_SECURITY`.
+(только `ADMIN`): из `REROUTED`/`FORWARDED` (иначе 400, повтор из `FORWARDED` разрешён),
+получатели = адреса правила категории вердикта + `emails` (дедуп, пусто всё → fallback `infosec@<domain>`);
+содержимое — оригинал без изменений (только конверт получателей), статус→`FORWARDED`
+(письмо уходит из карантина в отдельный фильтр), в `delivery_logs` — `FORWARDED_TO_SECURITY`.
 Стоп-слова: `GET/POST /api/v1/admin/stopwords`, `PUT/DELETE /api/v1/admin/stopwords/{id}`
 (только `ADMIN`; `pattern 2..200`, `category`, `active`).
 Фронт `/admin`: KPI-карточки + чипы категорий
@@ -173,16 +177,15 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   `⟳ Перепроверить`). Плавающее окно «Написать» (один `to`, CC/BCC нет;
   `\n→<br/>` + escape — бэк шлёт `setText(html=true)`; файлы ≤20МБ, иначе
   клиентский отказ).
-- `/admin` (роль `ADMIN`, иначе 403-панель) — дашборд (`GET /admin/stats`, чипы по
-  `byCategoryRerouted`, график с осью/легендой/min-height сегментов, скелетоны вместо нулей) +
-  SOC-таблица `?status=REROUTED` (колонка «Дата/время» всегда `дд.мм чч:мм`, умное пустое состояние),
-  polling 10с с `AbortController` + guard тиков + пропуск в фоне + подсветка свежей деталки в шторке
-  (стабильный интервал через refs) + инженерная шторка: `<mark>` триггеров,
-  таблица спеллера `было→стало`, `normalizedText`, карточки ссылок
-  (статус+Threat Score+`reasons`), `explanation`, маршрут `deliveries[]`,
-  кнопка «Выпустить из карантина» (двухшаговая, с причиной) + кнопка «Отправить
-  безопаснику» (двухшаговая: адреса правила + довесок + причина, статус не меняется) +
-  секции стоп-слов (CRUD, confirm удаления) и «Адреса ИБ» (`GET/PUT /routing-rules`, только `ADMIN`).
+- `/admin` (роль `ADMIN`, иначе 403-панель) — три вкладки: `🚨 Карантин` (дефолтная,
+  два ящика `REROUTED`/`FORWARDED` со счётчиками + чипы категорий активного ящика
+  (`byCategoryRerouted`/`byCategoryForwarded`) + таблица + пагинация, polling 10с) /
+  `📊 Обзор` (KPI: всего/доставлено/карантин/отправлено в ИБ/ошибки/очередь + график
+  с осью/легендой/min-height сегментов, скелетоны вместо нулей, селектор 7/14/30д) /
+  `⚙️ Настройки` (стоп-слова CRUD + «Адреса ИБ» `GET/PUT /routing-rules`).
+  Инженерная шторка следит за письмом между ящиками (forward переключает вкладку),
+  бейдж статуса: `В карантине`/`Отправлено в ИБ`; кнопки выпуска и форварда активны
+  в обоих ящиках (выпуск из `FORWARDED` тоже разрешён).
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
   (`next.config.js rewrites`) — CORS на бэке не нужен. В compose
   `BACKEND_URL=http://gateway:8080`.

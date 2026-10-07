@@ -100,6 +100,17 @@ class ReleaseFromQuarantineTest {
   }
 
   @Test
+  void releaseFromForwardedAlsoDelivers() {
+    msg.setStatus(MessageStatus.FORWARDED);
+    when(messages.findById(any(UUID.class))).thenReturn(Optional.of(msg));
+
+    svc.releaseFromQuarantine(msg.getId(), "admin@test.local", "проверили у ИБ");
+
+    assertEquals(MessageStatus.DELIVERED, msg.getStatus());
+    verify(mailSender).send(any(MimeMessage.class));
+  }
+
+  @Test
   void releaseMissingThrows() {
     when(messages.findById(any(UUID.class))).thenReturn(Optional.empty());
     assertThrows(NoSuchElementException.class,

@@ -25,4 +25,14 @@ public interface MessageThreatAnalysisRepository extends JpaRepository<MessageTh
       + "WHERE m.status = CAST('REROUTED' AS message_status) GROUP BY a.final_verdict",
       nativeQuery = true)
   List<Object[]> countByCategoryInQuarantine();
+
+  /**
+   * То же, но по письмам, отправленным безопасникам (status FORWARDED):
+   * чипы категорий вкладки «Отправлено в ИБ» в SOC-таблице.
+   */
+  @Query(value = "SELECT CAST(a.final_verdict AS text), COUNT(*) FROM message_threat_analysis a "
+      + "JOIN messages m ON m.id = a.message_id "
+      + "WHERE m.status = CAST('FORWARDED' AS message_status) GROUP BY a.final_verdict",
+      nativeQuery = true)
+  List<Object[]> countByCategoryForwarded();
 }

@@ -273,13 +273,15 @@ public class InboundPipelineService {
    * Ручной выпуск из карантина (только ADMIN, см. AdminMessageController):
    * оригинал — исходному получателю, статус → DELIVERED, вердикт сохраняется,
    * в delivery_logs — RELEASED_BY_ADMIN с email админа и причиной.
+   * Допустим из REROUTED и из FORWARDED (отправленное безопасникам всё ещё
+   * можно выпустить получателю — это разные действия, оба пишутся в аудит).
    */
   @Transactional
   public void releaseFromQuarantine(UUID id, String adminEmail, String reason) {
     Message msg = messages.findById(id)
         .orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
-    if (msg.getStatus() != MessageStatus.REROUTED) {
-      throw new IllegalArgumentException("Выпустить можно только письмо из карантина (REROUTED)");
+    if (msg.getStatus() != MessageStatus.REROUTED && msg.getStatus() != MessageStatus.FORWARDED) {
+      throw new IllegalArgumentException("Выпустить можно только письмо из карантина (REROUTED/FORWARDED)");
     }
     String note = "released by " + adminEmail
         + (reason == null || reason.isBlank() ? "" : ": " + reason.strip());
@@ -305,7 +307,9 @@ public class InboundPipelineService {
    * Ручная отправка копии карантинного письма безопасникам (только ADMIN):
    * получатели = адреса правила категории вердикта + дополнительные emails,
    * содержимое — оригинал без изменений (меняется только конверт получателей),
-   * статус остаётся REROUTED, в delivery_logs — FORWARDED_TO_SECURITY.
+   * статус → FORWARDED (письмо уходит из карантина в отдельный фильтр SOC-таблицы),
+   * в delivery_logs — FORWARDED_TO_SECURITY.
+   * Повторная отправка из FORWARDED разрешена (получатели пересчитываются заново).
    * Возвращает итоговый список получателей.
    */
   @Transactional
@@ -313,8 +317,8 @@ public class InboundPipelineService {
                                         String adminEmail, String reason) {
     Message msg = messages.findById(id)
         .orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
-    if (msg.getStatus() != MessageStatus.REROUTED) {
-      throw new IllegalArgumentException("Отправить безопаснику можно только письмо из карантина (REROUTED)");
+    if (msg.getStatus() != MessageStatus.REROUTED && msg.getStatus() != MessageStatus.FORWARDED) {
+      throw new IllegalArgumentException("Отправить безопаснику можно только письмо из карантина (REROUTED/FORWARDED)");
     }
     ThreatCategory cat = analysisRepo.findByMessageId(id)
         .map(MessageThreatAnalysis::getFinalVerdict).orElse(ThreatCategory.OTHER_THREAT);
@@ -348,6 +352,9 @@ public class InboundPipelineService {
           .smtpResponse(note + " | failed: " + e.getMessage()).success(false).build());
       throw new RuntimeException(e);
     }
+    msg.setStatus(MessageStatus.FORWARDED);
+    msg.setProcessedAt(OffsetDateTime.now());
+    messages.save(msg);
     return new ArrayList<>(dest);
   }
 

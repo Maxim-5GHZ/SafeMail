@@ -40,6 +40,11 @@ public class AdminStatsService {
       byCategoryRerouted.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
     }
 
+    Map<String, Long> byCategoryForwarded = new LinkedHashMap<>();
+    for (Object[] row : analyses.countByCategoryForwarded()) {
+      byCategoryForwarded.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+    }
+
     OffsetDateTime since = OffsetDateTime.now().minusDays(days);
     Map<LocalDate, long[]> counts = new LinkedHashMap<>();
     for (Object[] row : messages.countPerDaySince(since)) {
@@ -65,6 +70,7 @@ public class AdminStatsService {
         .byStatus(byStatus)
         .byCategory(byCategory)
         .byCategoryRerouted(byCategoryRerouted)
+        .byCategoryForwarded(byCategoryForwarded)
         .perDay(perDay)
         .queue(queue)
         .build();

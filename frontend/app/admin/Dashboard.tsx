@@ -1,8 +1,6 @@
 'use client';
 
-import type { AdminStats, ThreatCategory } from '@/lib/types';
-
-const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
+import type { AdminStats } from '@/lib/types';
 
 const PERIODS = [7, 14, 30];
 
@@ -27,25 +25,21 @@ function CardSkeleton() {
   );
 }
 
-/** Дашборд ИБ: KPI + категории + посуточная динамика. Без внешних chart-зависимостей — div-бары. */
+/** Вкладка «Обзор»: KPI + посуточная динамика. Фильтры таблицы живут во вкладке «Карантин». */
 export default function Dashboard({
   stats,
   days,
   onDays,
-  activeCategory,
-  onSelectCategory,
 }: {
   stats: AdminStats | null;
   days: number;
   onDays: (d: number) => void;
-  activeCategory: '' | ThreatCategory;
-  onSelectCategory: (c: '' | ThreatCategory) => void;
 }) {
   if (!stats) {
     return (
-      <div className="flex flex-col gap-3 mb-4" aria-label="Загрузка статистики">
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {[0, 1, 2, 3, 4].map((i) => (
+      <div className="flex flex-col gap-3" aria-label="Загрузка статистики">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
             <CardSkeleton key={i} />
           ))}
         </div>
@@ -63,38 +57,14 @@ export default function Dashboard({
   const mid = Math.round(max / 2);
 
   return (
-    <div className="flex flex-col gap-3 mb-4">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Card title="Всего писем" value={stats.total} />
         <Card title="Доставлено" value={stats.byStatus.DELIVERED ?? 0} accent="text-success" />
         <Card title="Карантин" value={stats.byStatus.REROUTED ?? 0} accent="text-error" />
+        <Card title="Отправлено в ИБ" value={stats.byStatus.FORWARDED ?? 0} accent="text-info" />
         <Card title="Ошибки" value={stats.byStatus.FAILED ?? 0} accent="text-warning" />
         <Card title="В очереди" value={queued} />
-      </div>
-
-      <div className="bg-base-100 rounded-xl shadow px-4 py-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-500 mr-1">
-            Карантин по категориям (клик — фильтр таблицы):
-          </span>
-          {CATS.map((c) => {
-            const n = stats.byCategoryRerouted?.[c] ?? 0;
-            const active = activeCategory === c;
-            return (
-              <button
-                key={c}
-                onClick={() => onSelectCategory(active ? '' : c)}
-                className={`badge gap-1 cursor-pointer ${
-                  active ? 'badge-error text-white' : 'badge-outline'
-                }`}
-                title={active ? `Сбросить фильтр ${c}` : `Показать ${c} в таблице`}
-              >
-                {c} · <b>{n}</b>
-                {active && <span aria-hidden>✕</span>}
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       <div className="bg-base-100 rounded-xl shadow px-4 py-3">

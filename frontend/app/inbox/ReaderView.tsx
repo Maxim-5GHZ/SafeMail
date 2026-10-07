@@ -17,9 +17,11 @@ function StatusBadge({ status }: { status: string }) {
   const color =
     status === 'DELIVERED'
       ? 'bg-green-100 text-green-700'
-      : status === 'REROUTED' || status === 'FAILED'
-        ? 'bg-red-100 text-red-700'
-        : 'bg-amber-100 text-amber-700';
+      : status === 'FORWARDED'
+        ? 'bg-blue-100 text-blue-700'
+        : status === 'REROUTED' || status === 'FAILED'
+          ? 'bg-red-100 text-red-700'
+          : 'bg-amber-100 text-amber-700';
   return <span className={`text-xs px-2 py-0.5 rounded-full ${color}`}>{status}</span>;
 }
 
@@ -128,6 +130,7 @@ export default function ReaderView({ id, token, onBack, onChanged }: Props) {
                 <> — уверенность {(msg.threat.confidence * 100).toFixed(0)}%</>
               )}
               {msg.status === 'REROUTED' && <> — письмо не доставлено, ушло в карантин</>}
+              {msg.status === 'FORWARDED' && <> — получателю не доставлено, копия отправлена безопасникам</>}
             </div>
           )}
           <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">

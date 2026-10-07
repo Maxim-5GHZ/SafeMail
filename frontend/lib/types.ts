@@ -14,6 +14,7 @@ export type MessageStatus =
   | 'ANALYZED'
   | 'DELIVERED'
   | 'REROUTED'
+  | 'FORWARDED'
   | 'FAILED';
 
 export interface LinkDto {
@@ -109,8 +110,10 @@ export interface AdminStats {
   byCategory: Record<string, number>;
   /** Счётчики вердиктов только по карантину — совпадают со строками SOC-таблицы. */
   byCategoryRerouted: Record<string, number>;
+  /** То же, но по письмам, отправленным безопасникам (вкладка «Отправлено в ИБ»). */
+  byCategoryForwarded: Record<string, number>;
   perDay: DayBucket[];
   queue: { pending: number; inProgress: number };
 }
 
-export const TERMINAL_STATUSES: MessageStatus[] = ['DELIVERED', 'REROUTED', 'FAILED'];
+export const TERMINAL_STATUSES: MessageStatus[] = ['DELIVERED', 'REROUTED', 'FORWARDED', 'FAILED'];

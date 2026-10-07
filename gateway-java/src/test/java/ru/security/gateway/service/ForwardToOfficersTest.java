@@ -28,7 +28,7 @@ import ru.security.gateway.repository.*;
 
 /**
  * Ручная отправка копии безопасникам: оригинал без изменений (кроме конверта),
- * статус остаётся REROUTED, в логах — FORWARDED_TO_SECURITY.
+ * статус → FORWARDED, в логах — FORWARDED_TO_SECURITY.
  */
 @ExtendWith(MockitoExtension.class)
 class ForwardToOfficersTest {
@@ -79,7 +79,7 @@ class ForwardToOfficersTest {
         List.of("boss@test.local", "soc@test.local"), "admin@test.local", "вторая пара глаз");
 
     assertEquals(List.of("soc@test.local", "boss@test.local"), to);
-    assertEquals(MessageStatus.REROUTED, msg.getStatus());
+    assertEquals(MessageStatus.FORWARDED, msg.getStatus());
     ArgumentCaptor<MimeMessage> mail = ArgumentCaptor.forClass(MimeMessage.class);
     verify(mailSender).send(mail.capture());
     // Тело и тема оригинала без изменений, конверт — на безопасников.
@@ -102,7 +102,7 @@ class ForwardToOfficersTest {
     List<String> to = svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null);
 
     assertEquals(List.of("soc@test.local"), to);
-    assertEquals(MessageStatus.REROUTED, msg.getStatus());
+    assertEquals(MessageStatus.FORWARDED, msg.getStatus());
   }
 
   @Test
@@ -115,6 +115,18 @@ class ForwardToOfficersTest {
     List<String> to = svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null);
 
     assertEquals(List.of("infosec@test.local"), to);
+  }
+
+  @Test
+  void forwardAllowedAgainFromForwarded() {
+    msg.setStatus(MessageStatus.FORWARDED);
+    stubRule();
+
+    List<String> to = svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null);
+
+    assertEquals(List.of("soc@test.local"), to);
+    assertEquals(MessageStatus.FORWARDED, msg.getStatus());
+    verify(mailSender).send(any(MimeMessage.class));
   }
 
   @Test

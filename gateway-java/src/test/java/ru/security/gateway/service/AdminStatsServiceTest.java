@@ -39,6 +39,8 @@ class AdminStatsServiceTest {
     // Один вердикт выпущен (DELIVERED) — в карантинный срез не попадает.
     when(analyses.countByCategoryInQuarantine()).thenReturn(List.<Object[]>of(
         new Object[]{"TERRORISM", 1L}));
+    when(analyses.countByCategoryForwarded()).thenReturn(List.<Object[]>of(
+        new Object[]{"MAN_MADE", 2L}));
     when(messages.countPerDaySince(any(OffsetDateTime.class))).thenReturn(List.<Object[]>of(
         new Object[]{yesterday, 4L, 1L},
         new Object[]{today, 6L, 1L}));
@@ -50,6 +52,7 @@ class AdminStatsServiceTest {
     assertEquals(1L, stats.getByCategory().get("TERRORISM"));
     assertEquals(1L, stats.getByCategoryRerouted().get("TERRORISM"));
     assertNull(stats.getByCategoryRerouted().get("OTHER_THREAT"));
+    assertEquals(2L, stats.getByCategoryForwarded().get("MAN_MADE"));
     // Zero-fill: окно целиком (14 бакетов), значения — на своих датах, остальные нули.
     assertEquals(14, stats.getPerDay().size());
     AdminStatsResponse.DayBucket dy = stats.getPerDay().stream()
@@ -70,6 +73,7 @@ class AdminStatsServiceTest {
     when(messages.countByStatus()).thenReturn(List.of());
     when(analyses.countByCategory()).thenReturn(List.of());
     when(analyses.countByCategoryInQuarantine()).thenReturn(List.of());
+    when(analyses.countByCategoryForwarded()).thenReturn(List.of());
     when(messages.countPerDaySince(any(OffsetDateTime.class))).thenReturn(List.of());
 
     AdminStatsResponse stats = new AdminStatsService(messages, analyses).getStats(7);

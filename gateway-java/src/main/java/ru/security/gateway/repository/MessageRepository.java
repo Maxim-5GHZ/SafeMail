@@ -30,10 +30,12 @@ public interface MessageRepository extends JpaRepository<Message, UUID>, JpaSpec
 
   /**
    * Посуточная динамика за окно. Строка: [LocalDate день, Long всего, Long rerouted].
+   * «Rerouted» здесь — весь карантинный трафик (REROUTED + FORWARDED: отправленное
+   * безопасникам тоже прошло через карантин и не должно исчезать из динамики).
    * Native: date_trunc + FILTER по PG-enum (только SELECT, bulk-UPDATE здесь нет).
    */
   @Query(value = "SELECT CAST(date_trunc('day', created_at) AS date) AS d, COUNT(*), "
-      + "COUNT(*) FILTER (WHERE status = CAST('REROUTED' AS message_status)) "
+      + "COUNT(*) FILTER (WHERE status IN (CAST('REROUTED' AS message_status), CAST('FORWARDED' AS message_status))) "
       + "FROM messages WHERE created_at >= :since GROUP BY d ORDER BY d", nativeQuery = true)
   List<Object[]> countPerDaySince(@Param("since") OffsetDateTime since);
 }

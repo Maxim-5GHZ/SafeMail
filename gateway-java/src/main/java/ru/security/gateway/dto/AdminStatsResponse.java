@@ -21,6 +21,8 @@ public class AdminStatsResponse {
   private Map<String, Long> byCategory;
   /** То же, но только письма в карантине (status REROUTED) — цифры совпадают с SOC-таблицей. */
   private Map<String, Long> byCategoryRerouted;
+  /** То же, но только письма, отправленные безопасникам (status FORWARDED). */
+  private Map<String, Long> byCategoryForwarded;
   /** Посуточная динамика за окно days (возрастание даты). */
   private List<DayBucket> perDay;
   /** Срез очереди из byStatus. */
