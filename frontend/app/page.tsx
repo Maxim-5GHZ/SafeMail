@@ -13,5 +13,5 @@ export default function Home() {
     router.replace(token ? homeForRole(roleOf(token)) : '/login');
   }, [ready, token, router]);
 
-  return <div className="p-8 text-gray-500">SafeMail…</div>;
+  return <div className="p-8 text-gray-500">СейфМейл…</div>;
 }

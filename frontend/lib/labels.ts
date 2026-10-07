@@ -60,9 +60,45 @@ export function actionLabel(a: string | null | undefined): string {
   return ACTION_LABELS[a] ?? a;
 }
 
-/** Префикс эвристических флагов classify (например stopword:обнал → стоп-слово: обнал). */
+/** Префиксы эвристических флагов classify: категория/стоп-слово/мат → русский показ. */
+const FLAG_CATS: Record<string, ThreatCategory> = {
+  terrorism: 'TERRORISM',
+  man_made: 'MAN_MADE',
+  illegal_actions: 'ILLEGAL_ACTIONS',
+  other_threat: 'OTHER_THREAT',
+};
+
 export function flagLabel(f: string): string {
-  const m = /^stopword:(.*)$/.exec(f);
-  if (m) return `стоп-слово: ${m[1]}`;
-  return f;
+  const m = /^(stopword|profanity|terrorism|man_made|illegal_actions|other_threat):(.*)$/i.exec(f);
+  if (!m) return 'маркер';
+  const head = m[1].toLowerCase();
+  if (head === 'stopword') return `стоп-слово: ${m[2]}`;
+  if (head === 'profanity') return `мат: ${m[2]}`;
+  return `${categoryLabel(FLAG_CATS[head])}: ${m[2]}`;
+}
+
+/** Причины enrich-скоринга ссылок (сырые ключи) → русский показ. */
+export function linkReasonLabel(r: string): string {
+  if (r === 'ip-in-host') return 'адрес вместо имени';
+  if (r === 'obfuscated-host') return 'маскировка имени';
+  if (r === 'suspicious-tld') return 'подозрительная зона';
+  if (r === 'no-tls') return 'без шифрования';
+  if (r === 'long-url') return 'слишком длинная';
+  const m = /^blacklist-hint:(.*)$/.exec(r);
+  if (m) return `чёрный список: ${m[1]}`;
+  return 'прочий признак';
+}
+
+/** Свободный текст smtp_response из delivery_logs → русский показ (детали — в логах шлюза). */
+export function routeLabel(resp: string | null | undefined): string {
+  if (!resp) return '';
+  const failed = resp.includes('| failed:');
+  const main = failed ? resp.split('| failed:')[0].trim() : resp;
+  let label: string | null = null;
+  if (main === 'relayed') label = 'доставлено получателю';
+  else if (main.startsWith('rerouted:')) label = `в карантин: ${categoryLabel(main.slice('rerouted:'.length).trim().toUpperCase() as ThreatCategory)}`;
+  else if (main.startsWith('forwarded by ')) label = `отправил в ИБ: ${main.slice('forwarded by '.length)}`;
+  else if (main.startsWith('released by ')) label = `выпустил: ${main.slice('released by '.length)}`;
+  if (!label) return failed ? 'ошибка' : 'запись';
+  return failed ? `${label} · ошибка` : label;
 }

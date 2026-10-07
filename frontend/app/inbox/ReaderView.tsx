@@ -5,6 +5,7 @@ import { ApiError, downloadAttachment, getMessage, reprocessMessage } from '@/li
 import { formatDate, formatSize } from '@/lib/format';
 import type { MessageDto } from '@/lib/types';
 import { categoryLabel, statusLabel } from '@/lib/labels';
+import { ClipIcon, WarnIcon } from '@/components/icons';
 import { TERMINAL_STATUSES } from '@/lib/types';
 
 interface Props {
@@ -125,13 +126,16 @@ export default function ReaderView({ id, token, onBack, onChanged }: Props) {
             </div>
           )}
           {msg.verdict && msg.verdict !== 'NONE' && (
-            <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">
-              ⚠ Вердикт фильтра: <b>{categoryLabel(msg.verdict)}</b>
+            <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2 flex items-center gap-2">
+              <WarnIcon className="w-4 h-4 shrink-0" />
+              <span>
+              Вердикт фильтра: <b>{categoryLabel(msg.verdict)}</b>
               {msg.threat?.confidence != null && (
                 <> — уверенность {(msg.threat.confidence * 100).toFixed(0)}%</>
               )}
               {msg.status === 'REROUTED' && <> — письмо не доставлено, ушло в карантин</>}
               {msg.status === 'FORWARDED' && <> — получателю не доставлено, копия отправлена безопасникам</>}
+              </span>
             </div>
           )}
           <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">
@@ -144,10 +148,10 @@ export default function ReaderView({ id, token, onBack, onChanged }: Props) {
                   key={a.id}
                   onClick={() => download(a.id, a.filename)}
                   disabled={downloading === a.id}
-                  className="text-xs px-3 py-1.5 border rounded-full hover:bg-gray-50 disabled:opacity-50"
+                  className="text-xs px-3 py-1.5 border rounded-full hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
                   title={a.contentType ?? ''}
                 >
-                  📎 {a.filename} ({formatSize(a.sizeBytes)}){downloading === a.id ? ' …' : ''}
+                  <ClipIcon className="w-3.5 h-3.5" /> {a.filename} ({formatSize(a.sizeBytes)}){downloading === a.id ? ' …' : ''}
                 </button>
               ))}
             </div>

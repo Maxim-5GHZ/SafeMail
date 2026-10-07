@@ -47,7 +47,7 @@ async function req<T>(
     const msg =
       (data as { message?: string; error?: string } | null)?.message ??
       (data as { error?: string } | null)?.error ??
-      `Ошибка сети (HTTP ${res.status})`;
+      `Ошибка сети (код ${res.status})`;
     throw new ApiError(res.status, msg);
   }
   return data as T;
@@ -107,7 +107,7 @@ export async function downloadAttachment(
   const res = await fetch(`/backend/v1/messages/${messageId}/attachments/${attachmentId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new ApiError(res.status, `Ошибка скачивания (HTTP ${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, `Не удалось скачать (код ${res.status})`);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

@@ -118,15 +118,14 @@ class ForwardToOfficersTest {
   }
 
   @Test
-  void forwardAllowedAgainFromForwarded() {
+  void forwardRepeatFromForwardedRejected() {
     msg.setStatus(MessageStatus.FORWARDED);
-    stubRule();
+    stubFound();
 
-    List<String> to = svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null);
-
-    assertEquals(List.of("soc@test.local"), to);
-    assertEquals(MessageStatus.FORWARDED, msg.getStatus());
-    verify(mailSender).send(any(MimeMessage.class));
+    assertThrows(IllegalArgumentException.class,
+        () -> svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null));
+    verifyNoInteractions(mailSender);
+    verify(deliveryRepo, never()).save(any());
   }
 
   @Test

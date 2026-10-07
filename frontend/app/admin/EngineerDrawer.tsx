@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { ApiError, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import { actionLabel, categoryLabel, flagLabel, linkStatusLabel } from '@/lib/labels';
+import { actionLabel, categoryLabel, flagLabel, linkReasonLabel, linkStatusLabel, routeLabel, statusLabel } from '@/lib/labels';
+import { CloseIcon } from '@/components/icons';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
 
@@ -27,7 +28,7 @@ function asSpellerFixes(v: unknown): SpellerFix[] {
 function asReasons(details: unknown): string[] {
   if (typeof details === 'object' && details !== null && 'reasons' in details) {
     const r = (details as Record<string, unknown>).reasons;
-    if (Array.isArray(r)) return r.map(String);
+    if (Array.isArray(r)) return r.map((x) => linkReasonLabel(String(x)));
   }
   return [];
 }
@@ -97,7 +98,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
   const forward = async () => {
     const extra = extraEmail.trim();
     if (extra && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extra)) {
-      setError('Доп. адрес не похож на email');
+      setError('Проверьте дополнительный адрес');
       return;
     }
     setBusy(true);
@@ -132,7 +133,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               <span
                 className={`badge badge-sm ${msg.status === 'FORWARDED' ? 'badge-info text-white' : msg.status === 'REROUTED' ? 'badge-error text-white' : 'badge-ghost'}`}
               >
-                {msg.status === 'FORWARDED' ? 'Отправлено в ИБ' : msg.status === 'REROUTED' ? 'В карантине' : msg.status}
+                {msg.status === 'FORWARDED' ? 'Отправлено в ИБ' : msg.status === 'REROUTED' ? 'В карантине' : statusLabel(msg.status)}
               </span>
             </div>
             <h2 className="font-bold mt-1">{msg.subject || '(без темы)'}</h2>
@@ -140,8 +141,8 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               {msg.senderEmail} → <b>{msg.recipientEmail}</b> · {formatDate(msg.createdAt)}
             </div>
           </div>
-          <button onClick={onClose} className="btn btn-sm btn-ghost ml-auto" title="Закрыть">
-            ✕
+          <button onClick={onClose} className="btn btn-sm btn-ghost ml-auto" title="Закрыть" aria-label="Закрыть">
+            <CloseIcon />
           </button>
         </div>
 
@@ -240,21 +241,33 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                   {msg.recipientEmail} → <b>{d.destinationRecipients.join(', ')}</b>
                 </div>
                 <div className="text-xs text-gray-500">
-                  {actionLabel(d.actionTaken)} · {d.success ? 'успешно' : 'ОШИБКА'} ·{' '}
+                  {actionLabel(d.actionTaken)} · {d.success ? 'успешно' : 'ошибка'} ·{' '}
                   {d.attemptedAt ? formatDate(d.attemptedAt) : '—'}
-                  {d.smtpResponse ? ` · ${d.smtpResponse}` : ''}
+                  {routeLabel(d.smtpResponse) ? ` · ${routeLabel(d.smtpResponse)}` : ''}
                 </div>
               </div>
             ))
           )}
         </Section>
 
-        <button onClick={reprocess} disabled={busy} className="btn btn-outline btn-sm">
-          {busy ? '…' : '⟳ Перепроверить'}
+        <button onClick={reprocess} disabled={busy} className="btn btn-ghost btn-sm">
+          Перепроверить
         </button>
 
-        {msg.status === 'REROUTED' || msg.status === 'FORWARDED' ? (
-          confirmRelease ? (
+        <div className="flex gap-2">
+          {(msg.status === 'REROUTED' || msg.status === 'FORWARDED') && !confirmRelease && (
+            <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-outline btn-warning btn-sm flex-1">
+              Выпустить из карантина
+            </button>
+          )}
+          {msg.status === 'REROUTED' && !confirmForward && (
+            <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-outline btn-info btn-sm flex-1">
+              Отправить безопаснику
+            </button>
+          )}
+        </div>
+
+        {(msg.status === 'REROUTED' || msg.status === 'FORWARDED') && confirmRelease && (
             <div className="flex flex-col gap-2 rounded-lg border border-warning p-3">
               <div className="text-sm">
                 Оригинал будет <b>доставлен {msg.recipientEmail}</b>. Действие пишется в аудит.
@@ -268,7 +281,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               />
               <div className="flex gap-2">
                 <button onClick={release} disabled={busy} className="btn btn-warning btn-sm flex-1">
-                  {busy ? '…' : '✓ Подтвердить выпуск'}
+                  {busy ? '…' : 'Подтвердить выпуск'}
                 </button>
                 <button
                   onClick={() => {
@@ -281,20 +294,14 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                 </button>
               </div>
             </div>
-          ) : (
-            <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-warning btn-sm">
-              ✓ Выпустить из карантина
-            </button>
-          )
-        ) : null}
+        )}
 
-        {msg.status === 'REROUTED' || msg.status === 'FORWARDED' ? (
-          confirmForward ? (
+        {msg.status === 'REROUTED' && confirmForward && (
             <div className="flex flex-col gap-2 rounded-lg border border-info p-3">
               <div className="text-sm">
                 Копия оригинала уйдёт <b>безопасникам по правилу категории</b> (см. «Адреса
                 ИБ» в Настройках). Письмо сменит статус на <b>«Отправлено в ИБ»</b> и уйдёт
-                из карантина, отправка пишется в аудит.
+                из карантина, отправка пишется в аудит. Повторно отправить нельзя.
               </div>
               <input
                 value={extraEmail}
@@ -312,7 +319,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
               />
               <div className="flex gap-2">
                 <button onClick={forward} disabled={busy} className="btn btn-info btn-sm flex-1">
-                  {busy ? '…' : '➤ Подтвердить отправку'}
+                  {busy ? '…' : 'Подтвердить отправку'}
                 </button>
                 <button
                   onClick={() => {
@@ -326,12 +333,7 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                 </button>
               </div>
             </div>
-          ) : (
-            <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-info btn-sm">
-              ➤ Отправить безопаснику
-            </button>
-          )
-        ) : null}
+        )}
       </div>
     </div>
   );

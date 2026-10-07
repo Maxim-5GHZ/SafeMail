@@ -9,6 +9,7 @@ import { ApiError, listMessages } from '@/lib/api';
 import { formatDate, snippet } from '@/lib/format';
 import { categoryLabel } from '@/lib/labels';
 import { loadRead, loadStarred, markRead, toggleStarred } from '@/lib/marks';
+import { StarIcon, ClipIcon } from '@/components/icons';
 import type { MessageDto, Page } from '@/lib/types';
 import ReaderView from './ReaderView';
 import ComposeWindow from './ComposeWindow';
@@ -165,10 +166,11 @@ export default function InboxPage() {
                           e.stopPropagation();
                           setStarred(toggleStarred(m.id));
                         }}
-                        className={`text-lg ${starred.includes(m.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}
-                        title="Звёздочка"
+                        className={`${starred.includes(m.id) ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}
+                        title={starred.includes(m.id) ? 'Убрать из избранного' : 'В избранное'}
+                        aria-label={starred.includes(m.id) ? 'Убрать из избранного' : 'В избранное'}
                       >
-                        ★
+                        <StarIcon filled={starred.includes(m.id)} />
                       </button>
                       {threat && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={categoryLabel(m.verdict)} />}
                       <span className="w-44 shrink-0 truncate text-sm">
@@ -178,7 +180,7 @@ export default function InboxPage() {
                         {m.subject || '(без темы)'}
                         <span className="font-normal text-gray-400"> — {snippet(m.cleanText)}</span>
                       </span>
-                      {m.attachmentCount > 0 && <span title="Есть вложения">📎</span>}
+                      {m.attachmentCount > 0 && <span title="Есть вложения" className="inline-flex text-gray-400"><ClipIcon /></span>}
                       <span className="text-xs text-gray-400 shrink-0">{formatDate(m.createdAt)}</span>
                     </div>
                   );

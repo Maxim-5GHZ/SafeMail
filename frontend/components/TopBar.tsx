@@ -11,7 +11,7 @@ interface Props {
 export default function TopBar({ query, onQuery, email, role, onLogout }: Props) {
   return (
     <header className="h-14 flex items-center gap-4 px-4 bg-white border-b border-gray-200 shrink-0">
-      <div className="font-bold text-lg text-blue-700 whitespace-nowrap">SafeMail</div>
+      <div className="font-bold text-lg text-blue-700 whitespace-nowrap">СейфМейл</div>
       <input
         value={query}
         onChange={(e) => onQuery(e.target.value)}

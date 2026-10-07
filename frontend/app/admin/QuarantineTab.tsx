@@ -5,6 +5,7 @@ import { ApiError, getMessage, listMessages } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import type { AdminStats, MessageDto, MessageStatus, Page, ThreatCategory } from '@/lib/types';
 import EngineerDrawer from './EngineerDrawer';
+import { CloseIcon } from '@/components/icons';
 
 import { CATS, categoryLabel } from '@/lib/labels';
 
@@ -145,7 +146,7 @@ export default function QuarantineTab({
               onClick={() => setBox(b)}
               className={`tab ${box === b ? 'tab-active' : ''}`}
             >
-              {b === 'REROUTED' ? '🚨 В карантине' : '➤ Отправлено в ИБ'} · <b>{boxCount(b)}</b>
+              {b === 'REROUTED' ? 'В карантине' : 'Отправлено в ИБ'} · <b>{boxCount(b)}</b>
             </button>
           ))}
         </div>
@@ -162,7 +163,7 @@ export default function QuarantineTab({
                 title={active ? `Сбросить фильтр «${categoryLabel(c)}»` : `Показать «${categoryLabel(c)}» в таблице`}
               >
                 {categoryLabel(c)} · <b>{n}</b>
-                {active && <span aria-hidden>✕</span>}
+                {active && <span aria-hidden className="inline-flex"><CloseIcon className="w-3 h-3" /></span>}
               </button>
             );
           })}
@@ -242,7 +243,7 @@ export default function QuarantineTab({
           ›
         </button>
         <button onClick={() => loadRef.current()} className="btn btn-sm btn-ghost">
-          ⟳ Обновить
+          Обновить
         </button>
       </div>
 

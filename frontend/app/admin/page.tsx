@@ -95,7 +95,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-base-200">
       <div className="navbar bg-base-100 border-b">
-        <span className="font-bold text-lg text-error px-4">SafeMail · Пульт ИБ</span>
+        <span className="font-bold text-lg text-error px-4">СейфМейл · Пульт ИБ</span>
         <span className="ml-auto flex items-center gap-3 px-4 text-sm">
           <a href="/inbox" className="link link-hover">
             Входящие
@@ -115,13 +115,13 @@ export default function AdminPage() {
       <div className="p-4 flex flex-col gap-3">
         <div className="tabs tabs-boxed bg-base-100 shadow self-start" role="tablist" aria-label="Разделы пульта ИБ">
           <button role="tab" aria-selected={tab === 'quarantine'} onClick={() => setTab('quarantine')} className={`tab ${tab === 'quarantine' ? 'tab-active' : ''}`}>
-            🚨 Карантин{stats && ` · ${quarantineCount}`}
+            Карантин{stats && ` · ${quarantineCount}`}
           </button>
           <button role="tab" aria-selected={tab === 'overview'} onClick={() => setTab('overview')} className={`tab ${tab === 'overview' ? 'tab-active' : ''}`}>
-            📊 Обзор
+            Обзор
           </button>
           <button role="tab" aria-selected={tab === 'settings'} onClick={() => setTab('settings')} className={`tab ${tab === 'settings' ? 'tab-active' : ''}`}>
-            ⚙️ Настройки
+            Настройки
           </button>
         </div>
 

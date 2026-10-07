@@ -3,7 +3,7 @@ import { AuthProvider } from '@/lib/auth';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'SafeMail',
+  title: 'СейфМейл',
   description: 'Почтовый шлюз с ИИ-фильтром',
 };
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, createStopword, deleteStopword, listStopwords, updateStopword } from '@/lib/api';
 import { CATS, categoryLabel } from '@/lib/labels';
+import { CloseIcon } from '@/components/icons';
 import type { ThreatCategory, ThreatStopword } from '@/lib/types';
 
 /** Стоп-слова ИБ: подстрока (без учёта регистра) по нормализованному тексту → вердикт категории. */
@@ -50,7 +51,7 @@ export default function Stopwords({ token }: { token: string }) {
     <div className="bg-base-100 rounded-xl shadow px-4 py-3 mb-4">
       <details className="text-xs text-gray-500 mb-2">
         <summary className="cursor-pointer hover:text-gray-700">
-          Стоп-слова — сигнал в classify (нажми — как работает)
+          Стоп-слова — сигнал в классификатор (нажми — как работает)
         </summary>
         <p className="mt-1">
           Совпадение подстроки в нормализованном тексте (обфускация уже снята) сразу даёт вердикт
@@ -170,7 +171,7 @@ export default function Stopwords({ token }: { token: string }) {
                           className="btn btn-ghost btn-xs text-error"
                           title="Удалить"
                         >
-                          ✕
+                          <CloseIcon className="w-3 h-3" />
                         </button>
                       )}
                     </td>

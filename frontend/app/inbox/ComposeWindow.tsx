@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ApiError, sendMessage } from '@/lib/api';
 import { MAX_ATTACHMENT_BYTES, formatSize } from '@/lib/format';
+import { ClipIcon, CloseIcon } from '@/components/icons';
 
 interface Props {
   from: string;
@@ -47,7 +48,7 @@ export default function ComposeWindow({ from, token, onClose, onSent }: Props) {
   const send = async () => {
     setError(null);
     if (!EMAIL_RE.test(to.trim())) {
-      setError('Укажите корректный email получателя');
+      setError('Укажите правильный адрес получателя');
       return;
     }
     if (!subject.trim() && !window.confirm('Отправить без темы?')) return;
@@ -77,8 +78,8 @@ export default function ComposeWindow({ from, token, onClose, onSent }: Props) {
           <button onClick={() => setMinimized((m) => !m)} className="px-2 hover:bg-gray-700 rounded" title="Свернуть">
             {minimized ? '▢' : '–'}
           </button>
-          <button onClick={onClose} className="px-2 hover:bg-gray-700 rounded" title="Закрыть">
-            ✕
+          <button onClick={onClose} className="px-2 hover:bg-gray-700 rounded inline-flex" title="Закрыть" aria-label="Закрыть">
+            <CloseIcon className="w-3.5 h-3.5" />
           </button>
         </span>
       </div>
@@ -108,12 +109,13 @@ export default function ComposeWindow({ from, token, onClose, onSent }: Props) {
             <div className="flex flex-wrap gap-1.5">
               {files.map((f, i) => (
                 <span key={i} className="text-xs bg-gray-100 rounded-full px-2 py-1 flex items-center gap-1">
-                  📎 {f.name} ({formatSize(f.size)})
+                  <ClipIcon className="w-3.5 h-3.5" /> {f.name} ({formatSize(f.size)})
                   <button
                     onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                    className="text-gray-400 hover:text-red-600"
+                    className="text-gray-400 hover:text-red-600 inline-flex"
+                    aria-label="Убрать файл"
                   >
-                    ✕
+                    <CloseIcon className="w-3 h-3" />
                   </button>
                 </span>
               ))}
@@ -128,8 +130,8 @@ export default function ComposeWindow({ from, token, onClose, onSent }: Props) {
             >
               {busy ? '…' : 'Отправить'}
             </button>
-            <label className="text-sm text-gray-500 hover:text-gray-800 cursor-pointer" title="Прикрепить файлы">
-              📎
+            <label className="text-sm text-gray-500 hover:text-gray-800 cursor-pointer inline-flex" title="Прикрепить файлы" aria-label="Прикрепить файлы">
+              <ClipIcon className="w-5 h-5" />
               <input type="file" multiple className="hidden" onChange={(e) => pickFiles(e.target.files)} />
             </label>
           </div>

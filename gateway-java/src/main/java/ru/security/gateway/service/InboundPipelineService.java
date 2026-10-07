@@ -309,16 +309,16 @@ public class InboundPipelineService {
    * содержимое — оригинал без изменений (меняется только конверт получателей),
    * статус → FORWARDED (письмо уходит из карантина в отдельный фильтр SOC-таблицы),
    * в delivery_logs — FORWARDED_TO_SECURITY.
-   * Повторная отправка из FORWARDED разрешена (получатели пересчитываются заново).
-   * Возвращает итоговый список получателей.
+   * Повторная отправка запрещена: из FORWARDED — 400 (кнопка фронта там уже
+   * не показывается). Возвращает итоговый список получателей.
    */
   @Transactional
   public List<String> forwardToOfficers(UUID id, List<String> extraEmails,
                                         String adminEmail, String reason) {
     Message msg = messages.findById(id)
         .orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
-    if (msg.getStatus() != MessageStatus.REROUTED && msg.getStatus() != MessageStatus.FORWARDED) {
-      throw new IllegalArgumentException("Отправить безопаснику можно только письмо из карантина (REROUTED/FORWARDED)");
+    if (msg.getStatus() != MessageStatus.REROUTED) {
+      throw new IllegalArgumentException("Отправить безопаснику можно только письмо из карантина (REROUTED), повторная отправка запрещена");
     }
     ThreatCategory cat = analysisRepo.findByMessageId(id)
         .map(MessageThreatAnalysis::getFinalVerdict).orElse(ThreatCategory.OTHER_THREAT);
@@ -379,9 +379,9 @@ public class InboundPipelineService {
         out.setFrom(msg.getSenderEmail());
         out.setRecipients(jakarta.mail.Message.RecipientType.TO, d);
         out.setSubject("[КАРАНТИН · " + categoryLabel(cat) + "] " + (msg.getSubject() == null ? "" : msg.getSubject()));
-        out.setText("Перехвачено шлюзом SafeMail.\nКатегория: " + categoryLabel(cat)
+        out.setText("Перехвачено шлюзом СейфМейл.\nКатегория: " + categoryLabel(cat)
             + "\nИсходный получатель: " + msg.getRecipientEmail()
-            + "\nMessage-ID: " + msg.getId(), "UTF-8");
+            + "\nНомер письма: " + msg.getId(), "UTF-8");
         mailSender.send(out);
       }
       deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())

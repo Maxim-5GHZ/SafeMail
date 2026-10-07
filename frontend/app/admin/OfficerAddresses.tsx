@@ -46,11 +46,11 @@ export default function OfficerAddresses({ token }: { token: string }) {
       .filter(Boolean);
     const bad = emails.filter((e) => !EMAIL_RE.test(e));
     if (emails.length === 0) {
-      setError('Нужен хотя бы один email');
+      setError('Нужен хотя бы один адрес');
       return;
     }
     if (bad.length > 0) {
-      setError(`Не email: ${bad.join(', ')}`);
+      setError(`Не адрес: ${bad.join(', ')}`);
       return;
     }
     setBusy(true);
