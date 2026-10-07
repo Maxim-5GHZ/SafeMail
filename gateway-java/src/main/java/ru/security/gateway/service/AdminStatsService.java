@@ -36,13 +36,19 @@ public class AdminStatsService {
     }
 
     OffsetDateTime since = OffsetDateTime.now().minusDays(days);
-    List<AdminStatsResponse.DayBucket> perDay = messages.countPerDaySince(since).stream()
-        .map(row -> AdminStatsResponse.DayBucket.builder()
-            .date(toDate(row[0]).toString())
-            .total((Long) row[1])
-            .rerouted((Long) row[2])
-            .build())
-        .toList();
+    Map<LocalDate, long[]> counts = new LinkedHashMap<>();
+    for (Object[] row : messages.countPerDaySince(since)) {
+      counts.put(toDate(row[0]), new long[]{(Long) row[1], (Long) row[2]});
+    }
+    // Zero-fill: окно days целиком, иначе один день растягивается на всю ширину графика.
+    LocalDate today = LocalDate.now();
+    List<AdminStatsResponse.DayBucket> perDay = new java.util.ArrayList<>(days);
+    for (int i = days - 1; i >= 0; i--) {
+      LocalDate d = today.minusDays(i);
+      long[] c = counts.getOrDefault(d, new long[]{0L, 0L});
+      perDay.add(AdminStatsResponse.DayBucket.builder()
+          .date(d.toString()).total(c[0]).rerouted(c[1]).build());
+    }
 
     AdminStatsResponse.QueueInfo queue = AdminStatsResponse.QueueInfo.builder()
         .pending(byStatus.getOrDefault(MessageStatus.PENDING.name(), 0L))

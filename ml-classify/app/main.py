@@ -84,14 +84,45 @@ PATTERNS: dict[str, list[str]] = {
 }
 
 
+class StopwordRule(BaseModel):
+    """Управляемое стоп-слово из PG (админка /admin): подстрока -> категория."""
+    pattern: str = ""
+    category: str = "OTHER_THREAT"
+
+
 class ClassifyRequest(BaseModel):
     text: str = ""
+    stopwords: list[StopwordRule] = []
 
 
-def heuristic_scan(normalized: str) -> tuple[str, float, list[str], list[str]]:
+def stopword_scan(normalized: str, stopwords: list[StopwordRule]) -> tuple[str, float, list[str], list[str]] | None:
+    """Подстрока без учёта регистра по нормализованному тексту (обфускация уже снята).
+    Первое совпадение побеждает; неизвестная/NONE-категория маппится в OTHER_THREAT."""
+    low = normalized.lower()
+    for rule in stopwords:
+        pat = (rule.pattern or "").strip()
+        if len(pat) < 2:
+            continue
+        idx = low.find(pat.lower())
+        if idx < 0:
+            continue
+        cat = (rule.category or "").strip().upper()
+        if cat not in PATTERNS:
+            cat = "OTHER_THREAT"
+        s = max(0, idx - 20)
+        snippet = normalized[s:idx + len(pat) + 20].strip()
+        return (cat, 0.9, [f"stopword:{pat}"], [snippet] if snippet else [normalized[:120]])
+    return None
+
+
+def heuristic_scan(normalized: str, stopwords: list[StopwordRule] | None = None) -> tuple[str, float, list[str], list[str]]:
     flags: list[str] = []
     hits: dict[str, int] = {}
     highlights: list[str] = []
+    # Управляемые стоп-слова — первым приоритетом (детерминированный сигнал из PG).
+    sw_hit = stopword_scan(normalized, stopwords or [])
+    if sw_hit is not None:
+        return sw_hit
     for cat, pats in PATTERNS.items():
         for p in pats:
             for m in re.finditer(p, normalized, re.IGNORECASE):
@@ -151,6 +182,31 @@ def run_startup_tests() -> None:
     if not any(f.startswith("profanity:") for f in flags3):
         print("[TEST FAIL] profanity flags missing", flush=True)
         failed += 1
+    # Управляемые стоп-слова: прямой/транслит/обфускация/false-positive/пустой список
+    sw = [StopwordRule(pattern="взрывчатка", category="TERRORISM"),
+          StopwordRule(pattern="обнал", category="ILLEGAL_ACTIONS")]
+    cat_sw, score_sw, flags_sw, _ = heuristic_scan(
+        FILTER.normalize("На складе хранится взрывчатка, забирай"), sw)
+    if cat_sw != "TERRORISM" or score_sw < 0.9 or "stopword:взрывчатка" not in flags_sw:
+        print(f"[TEST FAIL] stopword direct got {cat_sw}/{score_sw}/{flags_sw}", flush=True)
+        failed += 1
+    cat_tr, _, flags_tr, _ = heuristic_scan(
+        FILTER.normalize("predlagayu obnal deneg srochno"), sw)
+    if cat_tr != "ILLEGAL_ACTIONS" or "stopword:обнал" not in flags_tr:
+        print(f"[TEST FAIL] stopword translit got {cat_tr}/{flags_tr}", flush=True)
+        failed += 1
+    cat_ob, _, flags_ob, _ = heuristic_scan(FILTER.normalize("нужен о.б.н.а.л наличкой"), sw)
+    if cat_ob != "ILLEGAL_ACTIONS" or "stopword:обнал" not in flags_ob:
+        print(f"[TEST FAIL] stopword obfuscation got {cat_ob}/{flags_ob}", flush=True)
+        failed += 1
+    cat_fp, _, flags_fp, _ = heuristic_scan(FILTER.normalize("Обсудим наличные платежи завтра"), sw)
+    if cat_fp != "NONE" or any(f.startswith("stopword:") for f in flags_fp):
+        print(f"[TEST FAIL] stopword false-positive got {cat_fp}/{flags_fp}", flush=True)
+        failed += 1
+    cat_empty, _, _, _ = heuristic_scan(FILTER.normalize("Мы заложили бомбу на вокзале"), [])
+    if cat_empty != "TERRORISM":
+        print(f"[TEST FAIL] empty stopwords changed behavior: {cat_empty}", flush=True)
+        failed += 1
     if failed:
         print(f"[INIT FAIL] {failed} тестов провалено", flush=True)
         sys.exit(1)
@@ -180,7 +236,7 @@ def health() -> dict[str, str]:
 def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
     text = req.text or ""
     normalized = FILTER.normalize(text)
-    category, score, flags, highlights = heuristic_scan(normalized)
+    category, score, flags, highlights = heuristic_scan(normalized, req.stopwords or [])
     # heuristic_scan уже маппит чистый мат в OTHER_THREAT — здесь только объяснения.
     explanations = {
         "NONE": "Маркеры угроз не обнаружены.",
@@ -189,10 +245,14 @@ def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
         "ILLEGAL_ACTIONS": "Обнаружены маркеры шантажа/расправы/противоправных действий.",
         "OTHER_THREAT": "Обнаружены маркеры иных угроз.",
     }
+    explanation = explanations.get(category, "")
+    sw_flag = next((f for f in flags if f.startswith("stopword:")), None)
+    if sw_flag is not None:
+        explanation = f"Сработало управляемое стоп-слово «{sw_flag.split(':', 1)[1]}»."
     return {
         "category": category,
         "confidence": score,
-        "explanation": explanations.get(category, ""),
+        "explanation": explanation,
         "heuristic_score": score,
         "heuristic_flags": flags,
         "highlight_phrases": highlights,

@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/format';
 import type { AdminStats, MessageDto, Page, ThreatCategory } from '@/lib/types';
 import EngineerDrawer from './EngineerDrawer';
 import Dashboard from './Dashboard';
+import Stopwords from './Stopwords';
 
 const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
 
@@ -159,6 +160,7 @@ export default function AdminPage() {
             <span>Статистика недоступна: {statsError}</span>
           </div>
         )}
+        {token && <Stopwords token={token} />}
         {error && (
           <div className="alert alert-error mb-3">
             <span>{error}</span>

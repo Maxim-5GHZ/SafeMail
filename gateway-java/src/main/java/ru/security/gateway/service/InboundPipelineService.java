@@ -32,6 +32,7 @@ public class InboundPipelineService {
   private final MessageLinkRepository linkRepo;
   private final MessageThreatAnalysisRepository analysisRepo;
   private final ThreatRoutingRuleRepository rulesRepo;
+  private final ThreatStopwordRepository stopwordRepo;
   private final DeliveryLogRepository deliveryRepo;
   private final JavaMailSender mailSender;
   private final RestTemplate restTemplate;
@@ -207,8 +208,13 @@ public class InboundPipelineService {
     pd.setNormalizedText(normalized);
     parsedRepo.save(pd);
 
-    // 3. Classify
-    Map<String, Object> verdict = postJson(classifyUrl + "/internal/classify-threat", Map.of("text", normalized));
+    // 3. Classify — активные стоп-слова едут сигналом (подстрока по нормализованному
+    // тексту внутри classify-threat). Без ML — обычный fallback (ограничение зафиксировано).
+    List<Map<String, String>> swRules = stopwordRepo.findByActiveTrue().stream()
+        .map(sw -> Map.of("pattern", sw.getPattern(), "category", sw.getCategory().name()))
+        .toList();
+    Map<String, Object> verdict = postJson(classifyUrl + "/internal/classify-threat",
+        Map.of("text", normalized, "stopwords", swRules));
     ThreatCategory cat = parseCategory(str(verdict, "category"));
     double conf = num(verdict, "confidence");
     double hscore = num(verdict, "heuristic_score");
@@ -242,9 +248,7 @@ public class InboundPipelineService {
 
   private void deliverOriginal(Message msg) {
     try {
-      MimeMessage mime = new MimeMessage(Session.getDefaultInstance(new Properties()),
-          new ByteArrayInputStream(msg.getRawContent()));
-      mailSender.send(mime);
+      sendOriginalBytes(msg);
       deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
           .actionTaken("FORWARDED_ORIGINAL")
           .destinationRecipients(new String[]{msg.getRecipientEmail()})
@@ -256,6 +260,45 @@ public class InboundPipelineService {
           .smtpResponse("failed: " + e.getMessage()).success(false).build());
       throw new RuntimeException(e);
     }
+  }
+
+  /** Отправка оригинальных байтов без изменений (чистая доставка и ручной выпуск). */
+  private void sendOriginalBytes(Message msg) throws Exception {
+    MimeMessage mime = new MimeMessage(Session.getDefaultInstance(new Properties()),
+        new ByteArrayInputStream(msg.getRawContent()));
+    mailSender.send(mime);
+  }
+
+  /**
+   * Ручной выпуск из карантина (только ADMIN, см. AdminMessageController):
+   * оригинал — исходному получателю, статус → DELIVERED, вердикт сохраняется,
+   * в delivery_logs — RELEASED_BY_ADMIN с email админа и причиной.
+   */
+  @Transactional
+  public void releaseFromQuarantine(UUID id, String adminEmail, String reason) {
+    Message msg = messages.findById(id)
+        .orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
+    if (msg.getStatus() != MessageStatus.REROUTED) {
+      throw new IllegalArgumentException("Выпустить можно только письмо из карантина (REROUTED)");
+    }
+    String note = "released by " + adminEmail
+        + (reason == null || reason.isBlank() ? "" : ": " + reason.strip());
+    try {
+      sendOriginalBytes(msg);
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("RELEASED_BY_ADMIN")
+          .destinationRecipients(new String[]{msg.getRecipientEmail()})
+          .smtpResponse(note).success(true).build());
+    } catch (Exception e) {
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("RELEASED_BY_ADMIN")
+          .destinationRecipients(new String[]{msg.getRecipientEmail()})
+          .smtpResponse(note + " | failed: " + e.getMessage()).success(false).build());
+      throw new RuntimeException(e);
+    }
+    msg.setStatus(MessageStatus.DELIVERED);
+    msg.setProcessedAt(OffsetDateTime.now());
+    messages.save(msg);
   }
 
   private void reroute(Message msg, ThreatCategory cat) {

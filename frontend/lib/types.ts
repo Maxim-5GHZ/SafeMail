@@ -87,6 +87,15 @@ export interface RoutingRule {
   active: boolean;
 }
 
+/** Управляемое стоп-слово: GET /admin/stopwords (только ADMIN). */
+export interface ThreatStopword {
+  id: number;
+  pattern: string;
+  category: ThreatCategory;
+  active: boolean;
+  createdAt: string;
+}
+
 /** GET /admin/stats — агрегаты дашборда (только ADMIN). */
 export interface DayBucket {
   date: string;

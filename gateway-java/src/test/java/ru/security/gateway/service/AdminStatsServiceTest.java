@@ -25,6 +25,8 @@ class AdminStatsServiceTest {
 
   @Test
   void statsAggregateStatusesCategoriesDaysAndQueue() {
+    LocalDate yesterday = LocalDate.now().minusDays(1);
+    LocalDate today = LocalDate.now();
     when(messages.count()).thenReturn(10L);
     when(messages.countByStatus()).thenReturn(List.<Object[]>of(
         new Object[]{MessageStatus.DELIVERED, 6L},
@@ -35,23 +37,30 @@ class AdminStatsServiceTest {
         new Object[]{ThreatCategory.TERRORISM, 1L},
         new Object[]{ThreatCategory.OTHER_THREAT, 1L}));
     when(messages.countPerDaySince(any(OffsetDateTime.class))).thenReturn(List.<Object[]>of(
-        new Object[]{LocalDate.of(2026, 10, 6), 4L, 1L},
-        new Object[]{LocalDate.of(2026, 10, 7), 6L, 1L}));
+        new Object[]{yesterday, 4L, 1L},
+        new Object[]{today, 6L, 1L}));
 
     AdminStatsResponse stats = new AdminStatsService(messages, analyses).getStats(14);
 
     assertEquals(10L, stats.getTotal());
     assertEquals(6L, stats.getByStatus().get("DELIVERED"));
     assertEquals(1L, stats.getByCategory().get("TERRORISM"));
-    assertEquals(2, stats.getPerDay().size());
-    assertEquals("2026-10-06", stats.getPerDay().get(0).getDate());
-    assertEquals(1L, stats.getPerDay().get(1).getRerouted());
+    // Zero-fill: окно целиком (14 бакетов), значения — на своих датах, остальные нули.
+    assertEquals(14, stats.getPerDay().size());
+    AdminStatsResponse.DayBucket dy = stats.getPerDay().stream()
+        .filter(b -> b.getDate().equals(yesterday.toString())).findFirst().orElseThrow();
+    assertEquals(4L, dy.getTotal());
+    assertEquals(1L, dy.getRerouted());
+    AdminStatsResponse.DayBucket zero = stats.getPerDay().stream()
+        .filter(b -> b.getDate().equals(LocalDate.now().minusDays(13).toString()))
+        .findFirst().orElseThrow();
+    assertEquals(0L, zero.getTotal());
     assertEquals(1L, stats.getQueue().getPending());
     assertEquals(1L, stats.getQueue().getInProgress());
   }
 
   @Test
-  void emptyDatabaseYieldsZeroQueue() {
+  void emptyDatabaseYieldsFullZeroWindow() {
     when(messages.count()).thenReturn(0L);
     when(messages.countByStatus()).thenReturn(List.of());
     when(analyses.countByCategory()).thenReturn(List.of());
@@ -60,7 +69,8 @@ class AdminStatsServiceTest {
     AdminStatsResponse stats = new AdminStatsService(messages, analyses).getStats(7);
 
     assertEquals(0L, stats.getTotal());
-    assertTrue(stats.getPerDay().isEmpty());
+    assertEquals(7, stats.getPerDay().size());
+    assertTrue(stats.getPerDay().stream().allMatch(b -> b.getTotal() == 0));
     assertEquals(0L, stats.getQueue().getPending());
     assertEquals(0L, stats.getQueue().getInProgress());
   }

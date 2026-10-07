@@ -1,6 +1,6 @@
 // Тонкий клиент gateway через same-origin прокси /backend/* (см. next.config.js).
 // Токен — из localStorage (MVP), 401 → разлогин решает вызывающий код.
-import type { AdminStats, MessageDto, MessageStatus, Page, RoutingRule, ThreatCategory } from './types';
+import type { AdminStats, MessageDto, MessageStatus, Page, RoutingRule, ThreatCategory, ThreatStopword } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -139,4 +139,34 @@ export function listRules(token: string): Promise<RoutingRule[]> {
 export function getAdminStats(token: string, days = 14): Promise<AdminStats> {
   const q = new URLSearchParams({ days: String(days) });
   return req<AdminStats>(`/v1/admin/stats?${q.toString()}`, token);
+}
+
+export function releaseMessage(token: string, id: string, reason?: string): Promise<{ status: string }> {
+  return req<{ status: string }>(`/v1/admin/messages/${id}/release`, token, {
+    method: 'POST',
+    body: reason ? { reason } : {},
+  });
+}
+
+export function listStopwords(token: string): Promise<ThreatStopword[]> {
+  return req<ThreatStopword[]>('/v1/admin/stopwords', token);
+}
+
+export function createStopword(token: string, pattern: string, category: ThreatCategory): Promise<ThreatStopword> {
+  return req<ThreatStopword>('/v1/admin/stopwords', token, {
+    method: 'POST',
+    body: { pattern, category },
+  });
+}
+
+export function updateStopword(
+  token: string,
+  id: number,
+  patch: { category?: ThreatCategory; active?: boolean },
+): Promise<ThreatStopword> {
+  return req<ThreatStopword>(`/v1/admin/stopwords/${id}`, token, { method: 'PUT', body: patch });
+}
+
+export function deleteStopword(token: string, id: number): Promise<void> {
+  return req<void>(`/v1/admin/stopwords/${id}`, token, { method: 'DELETE' });
 }

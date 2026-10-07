@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiError, getMessage, reprocessMessage } from '@/lib/api';
+import { ApiError, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
@@ -55,6 +55,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRelease, setConfirmRelease] = useState(false);
+  const [reason, setReason] = useState('');
   const flags = msg.threat?.heuristicFlags ?? [];
   const highlightedClean = useHighlighted(msg.cleanText, flags);
   const highlightedNorm = useHighlighted(msg.normalizedText, flags);
@@ -66,6 +68,21 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
     try {
       await reprocessMessage(token, msg.id);
       onReprocessed(await getMessage(token, msg.id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Ошибка сети');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const release = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await releaseMessage(token, msg.id, reason.trim() || undefined);
+      onReprocessed(await getMessage(token, msg.id));
+      setConfirmRelease(false);
+      setReason('');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     } finally {
@@ -203,6 +220,40 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
         <button onClick={reprocess} disabled={busy} className="btn btn-outline btn-sm">
           {busy ? '…' : '⟳ Перепроверить (reprocess)'}
         </button>
+
+        {msg.status === 'REROUTED' &&
+          (confirmRelease ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-warning p-3">
+              <div className="text-sm">
+                Оригинал будет <b>доставлен {msg.recipientEmail}</b>. Действие пишется в аудит.
+              </div>
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Причина выпуска (необязательно)"
+                maxLength={500}
+                className="input input-bordered input-sm w-full"
+              />
+              <div className="flex gap-2">
+                <button onClick={release} disabled={busy} className="btn btn-warning btn-sm flex-1">
+                  {busy ? '…' : '✓ Подтвердить выпуск'}
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmRelease(false);
+                    setReason('');
+                  }}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-warning btn-sm">
+              ✓ Выпустить из карантина
+            </button>
+          ))}
       </div>
     </div>
   );

@@ -43,6 +43,7 @@ class InboundPipelineRouterTest {
   @Mock MessageLinkRepository linkRepo;
   @Mock MessageThreatAnalysisRepository analysisRepo;
   @Mock ThreatRoutingRuleRepository rulesRepo;
+  @Mock ThreatStopwordRepository stopwordRepo;
   @Mock DeliveryLogRepository deliveryRepo;
   @Mock JavaMailSender mailSender;
   @Mock RestTemplate restTemplate;
@@ -54,7 +55,7 @@ class InboundPipelineRouterTest {
   @BeforeEach
   void setUp() {
     svc = new InboundPipelineService(messages, parsedRepo, attachmentRepo, linkRepo,
-        analysisRepo, rulesRepo, deliveryRepo, mailSender, restTemplate, self);
+        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self);
     ReflectionTestUtils.setField(svc, "mailDomain", "test.local");
     byte[] raw = ("From: a@test.local\r\nTo: b@test.local\r\nSubject: hi\r\n"
         + "Content-Type: text/plain; charset=utf-8\r\n\r\nhello").getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -65,6 +66,7 @@ class InboundPipelineRouterTest {
     lenient().when(parsedRepo.findByMessageId(any())).thenReturn(Optional.empty());
     lenient().when(analysisRepo.findByMessageId(any())).thenReturn(Optional.empty());
     lenient().when(linkRepo.findByMessageId(any())).thenReturn(List.of());
+    lenient().when(stopwordRepo.findByActiveTrue()).thenReturn(List.of());
     lenient().when(mailSender.createMimeMessage())
         .thenAnswer(inv -> new MimeMessage(Session.getInstance(new Properties())));
   }
@@ -127,5 +129,25 @@ class InboundPipelineRouterTest {
     svc.processClaimed(msg.getId());
     assertEquals(MessageStatus.PENDING, msg.getStatus());
     verifyNoInteractions(restTemplate);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void activeStopwordsForwardedToClassify() {
+    when(stopwordRepo.findByActiveTrue()).thenReturn(List.of(
+        ru.security.gateway.domain.ThreatStopword.builder()
+            .pattern("обнал").category(ru.security.gateway.domain.ThreatCategory.ILLEGAL_ACTIONS).build()));
+    stubMl("NONE");
+    svc.processClaimed(msg.getId());
+    ArgumentCaptor<HttpEntity> bodies = ArgumentCaptor.forClass(HttpEntity.class);
+    verify(restTemplate, atLeastOnce()).exchange(
+        argThat((String url) -> url != null && url.contains("classify-threat")),
+        eq(HttpMethod.POST), bodies.capture(), any(ParameterizedTypeReference.class));
+    Object body = bodies.getValue().getBody();
+    assertInstanceOf(Map.class, body);
+    Object sw = ((Map<?, ?>) body).get("stopwords");
+    assertInstanceOf(List.class, sw);
+    assertEquals(1, ((List<?>) sw).size());
+    assertEquals("обнал", ((Map<?, ?>) ((List<?>) sw).get(0)).get("pattern"));
   }
 }

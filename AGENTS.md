@@ -105,8 +105,12 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   `{normalized_text, speller_fixes[{original,suggested}], links[{url,is_phishing,risk_score}]}`.
   URL транслитерировать **запрещено** (резать текст по URL, нормализовать
   только куски). Скоринг: IP +50, хит чёрного списка +30/+15, без TLS +10.
-- **classify** `POST /internal/classify-threat {text}` →
+- **classify** `POST /internal/classify-threat {text, stopwords?[{pattern,category}]}` →
   `{category, confidence, explanation, heuristic_score, heuristic_flags}`.
+  Управляемые стоп-слова из PG (`threat_stopwords`): подстрока без учёта регистра
+  по нормализованному тексту, первое совпадение → вердикт категории правила
+  (`confidence 0.9`, флаг `stopword:<pattern>`; чужая/NONE-категория → `OTHER_THREAT`).
+  Без ML стоп-слова не срабатывают (fallback отдаёт `NONE`) — ограничение зафиксировано.
   Внутри `ToxicityAndProfanityFilter.normalize/analyze`:
   склейка только `.-_*+` внутри слов (пробелы хранить!), `y→й`,
   safe-подстроки (`колебан, рубл, скипидар…`) не считать матом.
@@ -118,11 +122,12 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
 
 ## 5. БД (Postgres 16)
 
-`users(role) | threat_routing_rules | messages(status +IN_PROGRESS) | message_parsed_data |
+`users(role) | threat_routing_rules | threat_stopwords | messages(status +IN_PROGRESS) | message_parsed_data |
 message_attachments | message_links | message_threat_analysis(final_verdict) |
 delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_claim.sql`,
 роль — `V3__user_role.sql`, нормализованный текст — `V4__normalized_text.sql`
-(`message_parsed_data.normalized_text`, пишется в `processOne` после enrich).
+(`message_parsed_data.normalized_text`, пишется в `processOne` после enrich),
+стоп-слова — `V5__threat_stopwords.sql` (`pattern UNIQUE, category, is_active` + сиды).
 Сиды правил — `ON CONFLICT DO NOTHING`.
 Фильтр `?category=` — подзапросом `EXISTS` на `final_verdict`
 (в JPA связи `Message→analysis` нет).
@@ -130,7 +135,13 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 `days 1..90`, иначе 400 через `GlobalExceptionHandler`):
 `{total, byStatus, byCategory, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
 `byStatus/byCategory` — за всё время (`GROUP BY`), `perDay` — окно `days`
-(`date_trunc`, native SELECT). Фронт `/admin`: KPI-карточки + чипы категорий
+(`date_trunc`, native SELECT, zero-fill всех дат окна).
+Ручной выпуск: `POST /api/v1/admin/messages/{id}/release {reason?≤500}` (только `ADMIN`):
+только из `REROUTED` (иначе 400), оригинал — исходному получателю, статус→`DELIVERED`,
+вердикт сохраняется, в `delivery_logs` — `RELEASED_BY_ADMIN` с email админа и причиной.
+Стоп-слова: `GET/POST /api/v1/admin/stopwords`, `PUT/DELETE /api/v1/admin/stopwords/{id}`
+(только `ADMIN`; `pattern 2..200`, `category`, `active`).
+Фронт `/admin`: KPI-карточки + чипы категорий
 (клик — фильтр таблицы) + div-бары динамики + селектор 7/14/30д, polling 10с.
 Деталка `GET /messages/{id}` отдаёт инженерной шторке: `cleanText`,
 `normalizedText`, `links[{url,status,reputationScore,details}]` (`details` —
@@ -157,7 +168,8 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
 - `/admin` (роль `ADMIN`, иначе 403-панель) — дашборд (`GET /admin/stats`) +
   SOC-таблица `?status=REROUTED` (+ фильтр `?category=`), polling 10с + инженерная шторка: `<mark>` триггеров,
   таблица спеллера `было→стало`, `normalizedText`, карточки ссылок
-  (статус+Threat Score+`reasons`), `explanation`, маршрут `deliveries[]`.
+  (статус+Threat Score+`reasons`), `explanation`, маршрут `deliveries[]`,
+  кнопка «Выпустить из карантина» (двухшаговая, с причиной) + секция стоп-слов (CRUD).
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
   (`next.config.js rewrites`) — CORS на бэке не нужен. В compose
   `BACKEND_URL=http://gateway:8080`.
