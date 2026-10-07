@@ -86,10 +86,10 @@ export default function LoginPage() {
         <input
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="пароль (мин. 6 символов)"
+          placeholder={mode === 'register' ? 'пароль (мин. 6 символов)' : 'пароль'}
           type="password"
           required
-          minLength={6}
+          minLength={mode === 'register' ? 6 : undefined}
           className="px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-300"
         />
         {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
