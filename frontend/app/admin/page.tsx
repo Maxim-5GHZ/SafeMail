@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { ApiError, getMessage, listMessages } from '@/lib/api';
+import { ApiError, getAdminStats, getMessage, listMessages } from '@/lib/api';
 import { formatDate } from '@/lib/format';
-import type { MessageDto, Page, ThreatCategory } from '@/lib/types';
+import type { AdminStats, MessageDto, Page, ThreatCategory } from '@/lib/types';
 import EngineerDrawer from './EngineerDrawer';
+import Dashboard from './Dashboard';
 
 const CATS: ThreatCategory[] = ['TERRORISM', 'MAN_MADE', 'ILLEGAL_ACTIONS', 'OTHER_THREAT'];
 
@@ -23,6 +24,9 @@ export default function AdminPage() {
   const [data, setData] = useState<Page<MessageDto> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<MessageDto | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [days, setDays] = useState(14);
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -53,10 +57,32 @@ export default function AdminPage() {
     load();
   }, [load]);
 
+  const loadStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      setStats(await getAdminStats(token, days));
+      setStatsError(null);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        logout();
+        router.replace('/login');
+        return;
+      }
+      setStatsError(e instanceof ApiError ? e.message : 'Ошибка сети');
+    }
+  }, [token, days, logout, router]);
+
   useEffect(() => {
-    const t = setInterval(load, 10000);
+    loadStats();
+  }, [loadStats]);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      load();
+      loadStats();
+    }, 10000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, loadStats]);
 
   useEffect(() => {
     setPage(0);
@@ -119,6 +145,20 @@ export default function AdminPage() {
       </div>
 
       <div className="p-4">
+        <Dashboard
+          stats={stats}
+          days={days}
+          onDays={setDays}
+          onSelectCategory={(c) => {
+            setCategory(c);
+            setPage(0);
+          }}
+        />
+        {statsError && (
+          <div className="alert alert-warning mb-3">
+            <span>Статистика недоступна: {statsError}</span>
+          </div>
+        )}
         {error && (
           <div className="alert alert-error mb-3">
             <span>{error}</span>

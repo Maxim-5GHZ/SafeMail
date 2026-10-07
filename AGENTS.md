@@ -126,6 +126,12 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 Сиды правил — `ON CONFLICT DO NOTHING`.
 Фильтр `?category=` — подзапросом `EXISTS` на `final_verdict`
 (в JPA связи `Message→analysis` нет).
+Админ-дашборд: `GET /api/v1/admin/stats?days=14` (только `ADMIN`,
+`days 1..90`, иначе 400 через `GlobalExceptionHandler`):
+`{total, byStatus, byCategory, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
+`byStatus/byCategory` — за всё время (`GROUP BY`), `perDay` — окно `days`
+(`date_trunc`, native SELECT). Фронт `/admin`: KPI-карточки + чипы категорий
+(клик — фильтр таблицы) + div-бары динамики + селектор 7/14/30д, polling 10с.
 Деталка `GET /messages/{id}` отдаёт инженерной шторке: `cleanText`,
 `normalizedText`, `links[{url,status,reputationScore,details}]` (`details` —
 распарсенный JSONB с `reasons`, битый — строкой как есть), `threat.spellerFixes`
@@ -148,8 +154,8 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   `⟳ Перепроверить`). Плавающее окно «Написать» (один `to`, CC/BCC нет;
   `\n→<br/>` + escape — бэк шлёт `setText(html=true)`; файлы ≤20МБ, иначе
   клиентский отказ).
-- `/admin` (роль `ADMIN`, иначе 403-панель) — SOC-таблица `?status=REROUTED`
-  (+ фильтр `?category=`), polling 10с + инженерная шторка: `<mark>` триггеров,
+- `/admin` (роль `ADMIN`, иначе 403-панель) — дашборд (`GET /admin/stats`) +
+  SOC-таблица `?status=REROUTED` (+ фильтр `?category=`), polling 10с + инженерная шторка: `<mark>` триггеров,
   таблица спеллера `было→стало`, `normalizedText`, карточки ссылок
   (статус+Threat Score+`reasons`), `explanation`, маршрут `deliveries[]`.
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
@@ -176,6 +182,8 @@ BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
 самоподпись OpenSSL via `nginx/gen-certs.sh` (`CN=localhost`,
 `SAN: localhost, *.corp-sec.ru, 127.0.0.1`), ключ только на хосте
 (`nginx/certs/` в `.gitignore`, в репо не коммитить).
+`frontend` бежит под `user: "${UID:-1000}:${GID:-1000}"` — иначе root-писанина
+dev-сервера в `./frontend/.next` ломает хостовые `npm run build/typecheck` (EACCES).
 `mailhog` (:1025 SMTP, :8025 веб) — MVP-relay: сюда уходят чистые письма
 и карантин (`MAIL_RELAY_HOST=mailhog`). Без relay доставка падает в `FAILED`.
 В песочнице без сети `docker build` может не тянуть PyPI — это ок,

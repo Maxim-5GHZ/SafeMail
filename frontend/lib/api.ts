@@ -1,6 +1,6 @@
 // Тонкий клиент gateway через same-origin прокси /backend/* (см. next.config.js).
 // Токен — из localStorage (MVP), 401 → разлогин решает вызывающий код.
-import type { MessageDto, MessageStatus, Page, RoutingRule, ThreatCategory } from './types';
+import type { AdminStats, MessageDto, MessageStatus, Page, RoutingRule, ThreatCategory } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -134,4 +134,9 @@ export function register(username: string, password: string): Promise<{ token: s
 
 export function listRules(token: string): Promise<RoutingRule[]> {
   return req<RoutingRule[]>('/v1/routing-rules', token);
+}
+
+export function getAdminStats(token: string, days = 14): Promise<AdminStats> {
+  const q = new URLSearchParams({ days: String(days) });
+  return req<AdminStats>(`/v1/admin/stats?${q.toString()}`, token);
 }

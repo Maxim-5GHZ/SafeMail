@@ -26,6 +26,13 @@ public class GlobalExceptionHandler {
     return ResponseEntity.badRequest().body(Map.of("error", msg));
   }
 
+  /** Валидация @RequestParam/@PathVariable (@Min/@Max на days и т.п.) — это 400, а не 500. */
+  @ExceptionHandler({jakarta.validation.ConstraintViolationException.class,
+      org.springframework.web.method.annotation.HandlerMethodValidationException.class})
+  public ResponseEntity<Map<String, String>> paramValidation(Exception e) {
+    return ResponseEntity.badRequest().body(Map.of("error", "Некорректные параметры запроса"));
+  }
+
   @ExceptionHandler(Exception.class)
   public ResponseEntity<Map<String, String>> internal(Exception e) {
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

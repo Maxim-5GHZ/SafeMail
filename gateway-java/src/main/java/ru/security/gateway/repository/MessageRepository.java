@@ -23,4 +23,17 @@ public interface MessageRepository extends JpaRepository<Message, UUID>, JpaSpec
   @Query(value = "UPDATE messages SET status = CAST('PENDING' AS message_status) "
       + "WHERE status = CAST('IN_PROGRESS' AS message_status) AND created_at < :cutoff", nativeQuery = true)
   int resetStaleInProgress(@Param("cutoff") OffsetDateTime cutoff);
+
+  /** Счётчики по статусам за всё время. Строка: [MessageStatus, Long]. */
+  @Query("SELECT m.status, COUNT(m) FROM Message m GROUP BY m.status")
+  List<Object[]> countByStatus();
+
+  /**
+   * Посуточная динамика за окно. Строка: [LocalDate день, Long всего, Long rerouted].
+   * Native: date_trunc + FILTER по PG-enum (только SELECT, bulk-UPDATE здесь нет).
+   */
+  @Query(value = "SELECT CAST(date_trunc('day', created_at) AS date) AS d, COUNT(*), "
+      + "COUNT(*) FILTER (WHERE status = CAST('REROUTED' AS message_status)) "
+      + "FROM messages WHERE created_at >= :since GROUP BY d ORDER BY d", nativeQuery = true)
+  List<Object[]> countPerDaySince(@Param("since") OffsetDateTime since);
 }

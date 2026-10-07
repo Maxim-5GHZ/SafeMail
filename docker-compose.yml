@@ -96,6 +96,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     container_name: safemail-frontend
+    # Бежим под UID хоста: иначе root-писанина dev-сервера в ./frontend/.next
+    # ломает локальные npm run build/typecheck (EACCES на root-файлах).
+    user: "${UID:-1000}:${GID:-1000}"
     depends_on:
       - gateway
     ports:

@@ -87,4 +87,19 @@ export interface RoutingRule {
   active: boolean;
 }
 
+/** GET /admin/stats — агрегаты дашборда (только ADMIN). */
+export interface DayBucket {
+  date: string;
+  total: number;
+  rerouted: number;
+}
+
+export interface AdminStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byCategory: Record<string, number>;
+  perDay: DayBucket[];
+  queue: { pending: number; inProgress: number };
+}
+
 export const TERMINAL_STATUSES: MessageStatus[] = ['DELIVERED', 'REROUTED', 'FAILED'];
