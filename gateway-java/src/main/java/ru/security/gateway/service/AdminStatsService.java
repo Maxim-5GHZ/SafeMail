@@ -35,6 +35,11 @@ public class AdminStatsService {
       byCategory.put(((ThreatCategory) row[0]).name(), (Long) row[1]);
     }
 
+    Map<String, Long> byCategoryRerouted = new LinkedHashMap<>();
+    for (Object[] row : analyses.countByCategoryInQuarantine()) {
+      byCategoryRerouted.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+    }
+
     OffsetDateTime since = OffsetDateTime.now().minusDays(days);
     Map<LocalDate, long[]> counts = new LinkedHashMap<>();
     for (Object[] row : messages.countPerDaySince(since)) {
@@ -59,6 +64,7 @@ public class AdminStatsService {
         .total(total)
         .byStatus(byStatus)
         .byCategory(byCategory)
+        .byCategoryRerouted(byCategoryRerouted)
         .perDay(perDay)
         .queue(queue)
         .build();

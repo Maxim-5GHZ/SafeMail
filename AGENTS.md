@@ -133,12 +133,18 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 (в JPA связи `Message→analysis` нет).
 Админ-дашборд: `GET /api/v1/admin/stats?days=14` (только `ADMIN`,
 `days 1..90`, иначе 400 через `GlobalExceptionHandler`):
-`{total, byStatus, byCategory, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
-`byStatus/byCategory` — за всё время (`GROUP BY`), `perDay` — окно `days`
-(`date_trunc`, native SELECT, zero-fill всех дат окна).
+`{total, byStatus, byCategory, byCategoryRerouted, perDay[{date,total,rerouted}], queue{pending,inProgress}}`.
+`byStatus/byCategory` — за всё время (`GROUP BY`), `byCategoryRerouted` — вердикты только
+писем в `REROUTED` (native `JOIN … WHERE status=CAST('REROUTED'…)`, цифры = строкам SOC-таблицы),
+`perDay` — окно `days` (`date_trunc`, native SELECT, zero-fill всех дат окна).
 Ручной выпуск: `POST /api/v1/admin/messages/{id}/release {reason?≤500}` (только `ADMIN`):
 только из `REROUTED` (иначе 400), оригинал — исходному получателю, статус→`DELIVERED`,
 вердикт сохраняется, в `delivery_logs` — `RELEASED_BY_ADMIN` с email админа и причиной.
+Ручная отправка безопасникам: `POST /api/v1/admin/messages/{id}/forward {emails?[], reason?≤500}`
+(только `ADMIN`): только из `REROUTED` (иначе 400), получатели = адреса правила категории
+вердикта + `emails` (дедуп, пусто всё → fallback `infosec@<domain>`); содержимое — оригинал
+без изменений (только конверт получателей), статус остаётся `REROUTED`,
+в `delivery_logs` — `FORWARDED_TO_SECURITY`.
 Стоп-слова: `GET/POST /api/v1/admin/stopwords`, `PUT/DELETE /api/v1/admin/stopwords/{id}`
 (только `ADMIN`; `pattern 2..200`, `category`, `active`).
 Фронт `/admin`: KPI-карточки + чипы категорий
@@ -156,7 +162,9 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
 
 - `/login` — регистрация `username+password → username@NEXT_PUBLIC_MAIL_DOMAIN`,
-  вход по email; JWT в `localStorage` (MVP), роль из payload, 401 → `/login`.
+  вход по email; JWT в `localStorage` (MVP), роль из payload, 401 → `/login`;
+  после входа и с корня `/` роль `ADMIN` ведётся сразу в `/admin` (SOC),
+  остальные — в `/inbox` (`homeForRole/roleOf/storedRole` в `lib/auth`).
 - `/inbox` — Gmail-стиль: топбар с поиском (`?query=`, debounce 400мс),
   сайдбар (Входящие=`?recipient=я` / Отправленные=`?sender=я`), компактные строки
   (жирность=непрочитано из `localStorage`, ★ тоже там, красная точка=угроза,
@@ -165,17 +173,25 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   `⟳ Перепроверить`). Плавающее окно «Написать» (один `to`, CC/BCC нет;
   `\n→<br/>` + escape — бэк шлёт `setText(html=true)`; файлы ≤20МБ, иначе
   клиентский отказ).
-- `/admin` (роль `ADMIN`, иначе 403-панель) — дашборд (`GET /admin/stats`) +
-  SOC-таблица `?status=REROUTED` (+ фильтр `?category=`), polling 10с + инженерная шторка: `<mark>` триггеров,
+- `/admin` (роль `ADMIN`, иначе 403-панель) — дашборд (`GET /admin/stats`, чипы по
+  `byCategoryRerouted`, график с осью/легендой/min-height сегментов, скелетоны вместо нулей) +
+  SOC-таблица `?status=REROUTED` (колонка «Дата/время» всегда `дд.мм чч:мм`, умное пустое состояние),
+  polling 10с с `AbortController` + guard тиков + пропуск в фоне + подсветка свежей деталки в шторке
+  (стабильный интервал через refs) + инженерная шторка: `<mark>` триггеров,
   таблица спеллера `было→стало`, `normalizedText`, карточки ссылок
   (статус+Threat Score+`reasons`), `explanation`, маршрут `deliveries[]`,
-  кнопка «Выпустить из карантина» (двухшаговая, с причиной) + секция стоп-слов (CRUD).
+  кнопка «Выпустить из карантина» (двухшаговая, с причиной) + кнопка «Отправить
+  безопаснику» (двухшаговая: адреса правила + довесок + причина, статус не меняется) +
+  секции стоп-слов (CRUD, confirm удаления) и «Адреса ИБ» (`GET/PUT /routing-rules`, только `ADMIN`).
 - API идёт через same-origin прокси `/backend/* → BACKEND_URL/api/*`
   (`next.config.js rewrites`) — CORS на бэке не нужен. В compose
   `BACKEND_URL=http://gateway:8080`.
 - `Dockerfile.dev` (hot-reload, `:3008`) / `Dockerfile.prod` (standalone SSR),
   `next.config.js: {output:'standalone'}`. Проверка: `npm run typecheck`,
-  `npm run lint`, `npm run build`.
+  `npm run lint`, `npm run build`. Хостовая сборка перетирает bind-mounted
+  dev-кэш `./frontend/.next` → dev-сервер в контейнере падает с 500
+  (`MODULE_NOT_FOUND _document`): после `npm run build` делать
+  `rm -rf ./frontend/.next && docker compose restart frontend`.
 - Ограничения MVP (зафиксированы): метки read/star — `localStorage`
   (`sm_read/sm_star`, один ящик на браузер); без удаления (нет эндпоинта);
   список бэка не скоупит по владельцу — любой залогиненный видит чужие письма

@@ -301,6 +301,56 @@ public class InboundPipelineService {
     messages.save(msg);
   }
 
+  /**
+   * Ручная отправка копии карантинного письма безопасникам (только ADMIN):
+   * получатели = адреса правила категории вердикта + дополнительные emails,
+   * содержимое — оригинал без изменений (меняется только конверт получателей),
+   * статус остаётся REROUTED, в delivery_logs — FORWARDED_TO_SECURITY.
+   * Возвращает итоговый список получателей.
+   */
+  @Transactional
+  public List<String> forwardToOfficers(UUID id, List<String> extraEmails,
+                                        String adminEmail, String reason) {
+    Message msg = messages.findById(id)
+        .orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
+    if (msg.getStatus() != MessageStatus.REROUTED) {
+      throw new IllegalArgumentException("Отправить безопаснику можно только письмо из карантина (REROUTED)");
+    }
+    ThreatCategory cat = analysisRepo.findByMessageId(id)
+        .map(MessageThreatAnalysis::getFinalVerdict).orElse(ThreatCategory.OTHER_THREAT);
+    LinkedHashSet<String> dest = new LinkedHashSet<>();
+    rulesRepo.findByCategory(cat).map(ThreatRoutingRule::getDestinationEmails).ifPresent(ruleDest -> {
+      if (ruleDest != null) Collections.addAll(dest, ruleDest);
+    });
+    if (extraEmails != null) {
+      for (String e : extraEmails) {
+        if (e != null && !e.isBlank()) dest.add(e.strip());
+      }
+    }
+    if (dest.isEmpty()) {
+      dest.add("infosec@" + mailDomain);
+    }
+    String note = "forwarded by " + adminEmail
+        + (reason == null || reason.isBlank() ? "" : ": " + reason.strip());
+    try {
+      MimeMessage fwd = new MimeMessage(Session.getDefaultInstance(new Properties()),
+          new ByteArrayInputStream(msg.getRawContent()));
+      fwd.setRecipients(jakarta.mail.Message.RecipientType.TO, String.join(",", dest));
+      mailSender.send(fwd);
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("FORWARDED_TO_SECURITY")
+          .destinationRecipients(dest.toArray(new String[0]))
+          .smtpResponse(note).success(true).build());
+    } catch (Exception e) {
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("FORWARDED_TO_SECURITY")
+          .destinationRecipients(dest.toArray(new String[0]))
+          .smtpResponse(note + " | failed: " + e.getMessage()).success(false).build());
+      throw new RuntimeException(e);
+    }
+    return new ArrayList<>(dest);
+  }
+
   private void reroute(Message msg, ThreatCategory cat) {
     String[] dest = rulesRepo.findByCategory(cat)
         .map(ThreatRoutingRule::getDestinationEmails)

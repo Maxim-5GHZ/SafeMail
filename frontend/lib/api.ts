@@ -15,7 +15,7 @@ type Body = Record<string, unknown>;
 async function req<T>(
   path: string,
   token: string | null,
-  init?: { method?: string; body?: Body; form?: FormData },
+  init?: { method?: string; body?: Body; form?: FormData; signal?: AbortSignal },
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -30,6 +30,7 @@ async function req<T>(
     method: init?.method ?? 'GET',
     headers,
     body: payload,
+    signal: init?.signal,
   });
   if (res.status === 204 || res.status === 202) {
     const text = await res.text();
@@ -62,7 +63,7 @@ export interface ListParams {
   size?: number;
 }
 
-export function listMessages(token: string, p: ListParams): Promise<Page<MessageDto>> {
+export function listMessages(token: string, p: ListParams, signal?: AbortSignal): Promise<Page<MessageDto>> {
   const q = new URLSearchParams();
   if (p.status) q.set('status', p.status);
   if (p.category) q.set('category', p.category);
@@ -73,11 +74,11 @@ export function listMessages(token: string, p: ListParams): Promise<Page<Message
   q.set('size', String(p.size ?? 20));
   q.set('sortBy', 'createdAt');
   q.set('direction', 'DESC');
-  return req<Page<MessageDto>>(`/v1/messages?${q.toString()}`, token);
+  return req<Page<MessageDto>>(`/v1/messages?${q.toString()}`, token, signal ? { signal } : undefined);
 }
 
-export function getMessage(token: string, id: string): Promise<MessageDto> {
-  return req<MessageDto>(`/v1/messages/${id}`, token);
+export function getMessage(token: string, id: string, signal?: AbortSignal): Promise<MessageDto> {
+  return req<MessageDto>(`/v1/messages/${id}`, token, signal ? { signal } : undefined);
 }
 
 export function reprocessMessage(token: string, id: string): Promise<void> {
@@ -148,10 +149,34 @@ export function releaseMessage(token: string, id: string, reason?: string): Prom
   });
 }
 
+export function forwardMessage(
+  token: string,
+  id: string,
+  opts?: { emails?: string[]; reason?: string },
+): Promise<{ status: string; recipients: string[] }> {
+  const body: Body = {};
+  if (opts?.emails?.length) body.emails = opts.emails;
+  if (opts?.reason) body.reason = opts.reason;
+  return req<{ status: string; recipients: string[] }>(`/v1/admin/messages/${id}/forward`, token, {
+    method: 'POST',
+    body,
+  });
+}
+
+export function updateRule(
+  token: string,
+  category: ThreatCategory,
+  emails: string[],
+): Promise<RoutingRule> {
+  return req<RoutingRule>(`/v1/routing-rules/${category}`, token, {
+    method: 'PUT',
+    body: { destinationEmails: emails },
+  });
+}
+
 export function listStopwords(token: string): Promise<ThreatStopword[]> {
   return req<ThreatStopword[]>('/v1/admin/stopwords', token);
 }
-
 export function createStopword(token: string, pattern: string, category: ThreatCategory): Promise<ThreatStopword> {
   return req<ThreatStopword>('/v1/admin/stopwords', token, {
     method: 'POST',

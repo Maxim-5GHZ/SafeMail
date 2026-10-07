@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth';
+import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 
 const MAIL_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? 'corp-sec.ru';
@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (ready && token) router.replace('/inbox');
+    if (ready && token) router.replace(homeForRole(roleOf(token)));
   }, [ready, token, router]);
 
   const submit = async (e: React.FormEvent) => {
@@ -31,7 +31,7 @@ export default function LoginPage() {
       } else {
         await register(username.trim().toLowerCase(), password);
       }
-      router.replace('/inbox');
+      router.replace(homeForRole(storedRole()));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Ошибка сети');
     } finally {

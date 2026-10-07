@@ -106,3 +106,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth(): AuthCtx {
   return useContext(Ctx);
 }
+
+/** Роль из JWT без запроса к бэку (для роль-based редиректов). */
+export function roleOf(token: string | null): string | null {
+  if (!token) return null;
+  return decodePayload(token)?.role ?? null;
+}
+
+/** Роль из сохранённого токена (для редиректа сразу после login/register). */
+export function storedRole(): string | null {
+  try {
+    return roleOf(localStorage.getItem(TOKEN_KEY));
+  } catch {
+    return null;
+  }
+}
+
+/** Куда вести пользователя после входа: админа — сразу в SOC. */
+export function homeForRole(role: string | null): string {
+  return role === 'ADMIN' ? '/admin' : '/inbox';
+}

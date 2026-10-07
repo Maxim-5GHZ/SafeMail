@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ApiError, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
+import { ApiError, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useHighlighted } from '@/lib/highlight';
 import type { MessageDto, SpellerFix } from '@/lib/types';
@@ -57,6 +57,9 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
   const [error, setError] = useState<string | null>(null);
   const [confirmRelease, setConfirmRelease] = useState(false);
   const [reason, setReason] = useState('');
+  const [confirmForward, setConfirmForward] = useState(false);
+  const [extraEmail, setExtraEmail] = useState('');
+  const [forwardReason, setForwardReason] = useState('');
   const flags = msg.threat?.heuristicFlags ?? [];
   const highlightedClean = useHighlighted(msg.cleanText, flags);
   const highlightedNorm = useHighlighted(msg.normalizedText, flags);
@@ -83,6 +86,30 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
       onReprocessed(await getMessage(token, msg.id));
       setConfirmRelease(false);
       setReason('');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Ошибка сети');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forward = async () => {
+    const extra = extraEmail.trim();
+    if (extra && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extra)) {
+      setError('Доп. адрес не похож на email');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await forwardMessage(token, msg.id, {
+        ...(extra ? { emails: [extra] } : {}),
+        ...(forwardReason.trim() ? { reason: forwardReason.trim() } : {}),
+      });
+      onReprocessed(await getMessage(token, msg.id));
+      setConfirmForward(false);
+      setExtraEmail('');
+      setForwardReason('');
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     } finally {
@@ -252,6 +279,49 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
           ) : (
             <button onClick={() => setConfirmRelease(true)} disabled={busy} className="btn btn-warning btn-sm">
               ✓ Выпустить из карантина
+            </button>
+          ))}
+
+        {msg.status === 'REROUTED' &&
+          (confirmForward ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-info p-3">
+              <div className="text-sm">
+                Копия оригинала уйдёт <b>безопасникам по правилу категории</b> (см. «Адреса
+                ИБ»). Письмо остаётся в карантине, отправка пишется в аудит.
+              </div>
+              <input
+                value={extraEmail}
+                onChange={(e) => setExtraEmail(e.target.value)}
+                placeholder="Ещё адрес (необязательно)"
+                maxLength={200}
+                className="input input-bordered input-sm w-full font-mono"
+              />
+              <input
+                value={forwardReason}
+                onChange={(e) => setForwardReason(e.target.value)}
+                placeholder="Причина/комментарий (необязательно)"
+                maxLength={500}
+                className="input input-bordered input-sm w-full"
+              />
+              <div className="flex gap-2">
+                <button onClick={forward} disabled={busy} className="btn btn-info btn-sm flex-1">
+                  {busy ? '…' : '➤ Подтвердить отправку'}
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmForward(false);
+                    setExtraEmail('');
+                    setForwardReason('');
+                  }}
+                  className="btn btn-ghost btn-sm"
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmForward(true)} disabled={busy} className="btn btn-info btn-sm">
+              ➤ Отправить безопаснику
             </button>
           ))}
       </div>

@@ -107,6 +107,8 @@ export interface AdminStats {
   total: number;
   byStatus: Record<string, number>;
   byCategory: Record<string, number>;
+  /** Счётчики вердиктов только по карантину — совпадают со строками SOC-таблицы. */
+  byCategoryRerouted: Record<string, number>;
   perDay: DayBucket[];
   queue: { pending: number; inProgress: number };
 }

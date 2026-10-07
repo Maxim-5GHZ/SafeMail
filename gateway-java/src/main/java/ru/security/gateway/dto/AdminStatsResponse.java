@@ -19,6 +19,8 @@ public class AdminStatsResponse {
   private Map<String, Long> byStatus;
   /** Ключ — имя ThreatCategory, значение — счётчик (только проанализированные). */
   private Map<String, Long> byCategory;
+  /** То же, но только письма в карантине (status REROUTED) — цифры совпадают с SOC-таблицей. */
+  private Map<String, Long> byCategoryRerouted;
   /** Посуточная динамика за окно days (возрастание даты). */
   private List<DayBucket> perDay;
   /** Срез очереди из byStatus. */

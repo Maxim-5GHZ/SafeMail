@@ -12,7 +12,9 @@ export default function Stopwords({ token }: { token: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pattern, setPattern] = useState('');
   const [category, setCategory] = useState<ThreatCategory>('OTHER_THREAT');
-  const [busy, setBusy] = useState(false);
+  /** Какая строка сейчас мутирует ('new' — форма добавления). Остальные контролы живые. */
+  const [busyId, setBusyId] = useState<number | 'new' | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -27,30 +29,35 @@ export default function Stopwords({ token }: { token: string }) {
     load();
   }, [load]);
 
-  const mutate = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
+  const mutate = async (id: number | 'new', fn: () => Promise<unknown>) => {
+    setBusyId(id);
     try {
       await fn();
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   };
 
   const add = () =>
-    mutate(async () => {
+    mutate('new', async () => {
       await createStopword(token, pattern.trim(), category);
       setPattern('');
     });
 
   return (
     <div className="bg-base-100 rounded-xl shadow px-4 py-3 mb-4">
-      <div className="text-xs text-gray-500 mb-2">
-        Стоп-слова — сигнал в classify: совпадение подстроки в нормализованном тексте (обфускация уже снята)
-        сразу даёт вердикт категории с флагом <code>stopword:…</code>
-      </div>
+      <details className="text-xs text-gray-500 mb-2">
+        <summary className="cursor-pointer hover:text-gray-700">
+          Стоп-слова — сигнал в classify (нажми — как работает)
+        </summary>
+        <p className="mt-1">
+          Совпадение подстроки в нормализованном тексте (обфускация уже снята) сразу даёт вердикт
+          категории с флагом <code>stopword:…</code>. Влияет на все новые письма после сохранения.
+        </p>
+      </details>
       {error && (
         <div className="alert alert-error alert-sm mb-2 text-sm">
           <span>{error}</span>
@@ -76,8 +83,12 @@ export default function Stopwords({ token }: { token: string }) {
             </option>
           ))}
         </select>
-        <button onClick={add} disabled={busy || pattern.trim().length < 2} className="btn btn-primary btn-sm">
-          + Добавить
+        <button
+          onClick={add}
+          disabled={busyId !== null || pattern.trim().length < 2}
+          className="btn btn-primary btn-sm"
+        >
+          {busyId === 'new' ? '…' : '+ Добавить'}
         </button>
       </div>
       {rules.length === 0 ? (
@@ -94,47 +105,79 @@ export default function Stopwords({ token }: { token: string }) {
               </tr>
             </thead>
             <tbody>
-              {rules.map((r) => (
-                <tr key={r.id}>
-                  <td className="font-mono">{r.pattern}</td>
-                  <td>
-                    <select
-                      value={r.category}
-                      disabled={busy}
-                      onChange={(e) =>
-                        mutate(() => updateStopword(token, r.id, { category: e.target.value as ThreatCategory }))
-                      }
-                      className="select select-bordered select-xs"
-                    >
-                      {CATS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={r.active}
-                      disabled={busy}
-                      onChange={() => mutate(() => updateStopword(token, r.id, { active: !r.active }))}
-                      className="toggle toggle-sm"
-                      title={r.active ? 'Выключить' : 'Включить'}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => mutate(() => deleteStopword(token, r.id))}
-                      disabled={busy}
-                      className="btn btn-ghost btn-xs text-error"
-                      title="Удалить"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rules.map((r) => {
+                const busy = busyId === r.id;
+                return (
+                  <tr key={r.id}>
+                    <td className="font-mono">{r.pattern}</td>
+                    <td>
+                      <select
+                        value={r.category}
+                        disabled={busyId !== null}
+                        onChange={(e) =>
+                          mutate(r.id, () =>
+                            updateStopword(token, r.id, {
+                              category: e.target.value as ThreatCategory,
+                            }),
+                          )
+                        }
+                        className="select select-bordered select-xs"
+                      >
+                        {CATS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={r.active}
+                        disabled={busyId !== null}
+                        onChange={() =>
+                          mutate(r.id, () => updateStopword(token, r.id, { active: !r.active }))
+                        }
+                        className="toggle toggle-sm"
+                        title={r.active ? 'Выключить' : 'Включить'}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap">
+                      {confirmDelete === r.id ? (
+                        <span className="inline-flex gap-1">
+                          <button
+                            onClick={() =>
+                              mutate(r.id, () => deleteStopword(token, r.id)).then(() =>
+                                setConfirmDelete(null),
+                              )
+                            }
+                            disabled={busy}
+                            className="btn btn-error btn-xs"
+                            title="Подтвердить удаление"
+                          >
+                            {busy ? '…' : 'Удалить?'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="btn btn-ghost btn-xs"
+                          >
+                            Нет
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(r.id)}
+                          disabled={busyId !== null}
+                          className="btn btn-ghost btn-xs text-error"
+                          title="Удалить"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

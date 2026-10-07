@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import ru.security.gateway.dto.ForwardRequest;
 import ru.security.gateway.dto.ReleaseRequest;
 import ru.security.gateway.service.InboundPipelineService;
 
@@ -25,5 +26,15 @@ public class AdminMessageController {
     String adminEmail = SecurityContextHolder.getContext().getAuthentication().getName();
     pipelineService.releaseFromQuarantine(id, adminEmail, req == null ? null : req.getReason());
     return ResponseEntity.ok(Map.of("status", "DELIVERED"));
+  }
+
+  @PostMapping("/{id}/forward")
+  public ResponseEntity<Map<String, Object>> forward(@PathVariable UUID id,
+                                                     @Valid @RequestBody(required = false) ForwardRequest req) {
+    String adminEmail = SecurityContextHolder.getContext().getAuthentication().getName();
+    java.util.List<String> to = pipelineService.forwardToOfficers(id,
+        req == null ? null : req.getEmails(),
+        adminEmail, req == null ? null : req.getReason());
+    return ResponseEntity.ok(Map.of("status", "FORWARDED", "recipients", to));
   }
 }
