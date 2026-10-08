@@ -176,13 +176,14 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   leet-цифры — то же правило, что в enrich (только внутри букв).
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
-  Семантика — `app/semantic.py`: Mistral через OpenRouter (primary,
-  `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL`, `httpx`, таймаут 8с) +
+  Семантика — `app/semantic.py`: Qwen через OpenRouter (primary,
+  `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL` (дефолт `qwen/qwen-2.5-7b-instruct`),
+  `httpx`, таймаут 8с) +
   GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Конкурентный всплеск
   OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 6+1
-  (семафоры + keep-alive): каждый `explain()` сначала в Mistral, при падении —
-  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Mistral
-  логируется warning-строкой `mistral fallback -> gigachat | reason | ms`
+  (семафоры + keep-alive): каждый `explain()` сначала в Qwen, при падении —
+  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Qwen
+  логируется warning-строкой `qwen fallback -> gigachat | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
   счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.
   Кап генерации `MAX_TOKENS=300` (ответ — короткий JSON, запас 3x): обрезка даёт

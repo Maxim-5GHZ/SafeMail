@@ -1,4 +1,4 @@
-"""Семантический инференс: Mistral через OpenRouter (primary) + GigaChat (fallback).
+"""Семантический инференс: Qwen через OpenRouter (primary) + GigaChat (fallback).
 
 Контракт сохранён: класс SemanticModel + синглтон MODEL с интерфейсом
   .available / .load() / .explain(text) / .predict(text)
@@ -6,10 +6,10 @@
 
 Правила:
 - Ключи — только из env: OPENROUTER_API_KEY (+ OPENROUTER_MODEL, дефолт
-  mistral-small-24b) и GIGACHAT_API_KEY. В репо секретов нет.
-- Пулы запросов 6+1: семафор на 6 параллельных вызовов Mistral и 1 —
-  GigaChat; httpx-клиент Mistral с keep-alive (max_connections=6).
-- Каждый explain() сначала идёт в Mistral; при ошибке/таймауте/не-JSON/
+  qwen-2.5-7b) и GIGACHAT_API_KEY. В репо секретов нет.
+- Пулы запросов 6+1: семафор на 6 параллельных вызовов Qwen и 1 —
+  GigaChat; httpx-клиент Qwen с keep-alive (max_connections=6).
+- Каждый explain() сначала идёт в Qwen; при ошибке/таймауте/не-JSON/
   safety-блоке — один заход в GigaChat (warning-лог с reason и ms);
   упали оба — ("NONE", 0.0, 0.0), пайплайн идёт по эвристическому
   fallback (fail-closed, как раньше без ключей).
@@ -32,15 +32,15 @@ from .prototypes import CATEGORIES, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
 logger = logging.getLogger("safemail.classify.semantic")
 
-MODEL_NAME = "mistral-small-24b"
+MODEL_NAME = "qwen-2.5-7b"
 
-OPENROUTER_DEFAULT_MODEL = "mistralai/mistral-small-24b-instruct-2501"
+OPENROUTER_DEFAULT_MODEL = "qwen/qwen-2.5-7b-instruct"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Бюджет под gateway readTimeout 15с: 8с Mistral + ~5.5с GigaChat.
-MISTRAL_TIMEOUT_S = 8.0
+# Бюджет под gateway readTimeout 15с: 8с Qwen + ~5.5с GigaChat.
+QWEN_TIMEOUT_S = 8.0
 GIGA_TIMEOUT_S = 5.5
-# Пулы запросов: 6 параллельных Mistral + 1 зарезервированный GigaChat.
-MISTRAL_MAX_SLOTS = 6
+# Пулы запросов: 6 параллельных Qwen + 1 зарезервированный GigaChat.
+QWEN_MAX_SLOTS = 6
 GIGA_MAX_SLOTS = 1
 TEXT_LIMIT = 2000
 # Кап генерации: ответ — короткий JSON (~60-100 токенов), запас 3x.
@@ -59,7 +59,8 @@ SYSTEM_PROMPT_CLASSIFY = (
     "Отвечай от лица SLM, СТРОГО валидным JSON без markdown-оберток:\n"
     '{"category": "NONE", "confidence": 0.05, "explanation": "коротко по-русски"}\n'
     "confidence — число 0..1. Мат без угрозы — OTHER_THREAT ~0.75. "
-    "Обычное письмо — NONE с низкой уверенностью."
+    "Обычное письмо — NONE с низкой уверенностью. "
+    "Отвечай ТОЛЬКО JSON-объектом, без пояснений, приветствий и markdown."
 )
 
 _SAFETY_TRIGGERS = (
@@ -111,19 +112,19 @@ class ProviderError(Exception):
         self.reason = reason
 
 
-# Семафоры пулов: 6 параллельных Mistral + 1 GigaChat (fallback не ждёт очередь).
-_MISTRAL_SEM = threading.Semaphore(MISTRAL_MAX_SLOTS)
+# Семафоры пулов: 6 параллельных Qwen + 1 GigaChat (fallback не ждёт очередь).
+_QWEN_SEM = threading.Semaphore(QWEN_MAX_SLOTS)
 _GIGA_SEM = threading.Semaphore(GIGA_MAX_SLOTS)
 # Общий пул потоков (7 = 6+1): нужен, чтобы ограничить время GigaChat-вызова,
 # у которого в gigachat-пакете нет надёжного таймаута.
-_POOL = ThreadPoolExecutor(max_workers=MISTRAL_MAX_SLOTS + GIGA_MAX_SLOTS,
+_POOL = ThreadPoolExecutor(max_workers=QWEN_MAX_SLOTS + GIGA_MAX_SLOTS,
                            thread_name_prefix="semprov")
 
 
-class MistralOpenRouterProvider:
-    """Primary: Mistral Small через OpenRouter Chat Completions (httpx)."""
+class QwenOpenRouterProvider:
+    """Primary: Qwen 2.5 7B через OpenRouter Chat Completions (httpx)."""
 
-    name = "mistral"
+    name = "qwen"
 
     def __init__(self) -> None:
         self._client: httpx.Client | None = None
@@ -149,9 +150,9 @@ class MistralOpenRouterProvider:
             "X-Title": "SafeMail",
         }
         self._client = httpx.Client(
-            timeout=httpx.Timeout(MISTRAL_TIMEOUT_S),
-            limits=httpx.Limits(max_connections=MISTRAL_MAX_SLOTS,
-                                max_keepalive_connections=MISTRAL_MAX_SLOTS),
+            timeout=httpx.Timeout(QWEN_TIMEOUT_S),
+            limits=httpx.Limits(max_connections=QWEN_MAX_SLOTS,
+                                max_keepalive_connections=QWEN_MAX_SLOTS),
         )
         self.configured = True
         return True
@@ -271,25 +272,25 @@ class GigaChatProvider:
 
 
 class SemanticModel:
-    """Роутер Mistral (primary) -> GigaChat (fallback) под старым интерфейсом."""
+    """Роутер Qwen (primary) -> GigaChat (fallback) под старым интерфейсом."""
 
     def __init__(self) -> None:
-        self._mistral = MistralOpenRouterProvider()
+        self._qwen = QwenOpenRouterProvider()
         self._giga = GigaChatProvider()
         self.loaded = False
         self._lock = threading.Lock()
-        self._counters = {"mistral_ok": 0, "mistral_fallback": 0,
+        self._counters = {"qwen_ok": 0, "qwen_fallback": 0,
                           "gigachat_ok": 0, "both_fail": 0}
         self._local = threading.local()
 
     @property
     def available(self) -> bool:
-        return self.loaded and (self._mistral.available or self._giga.available)
+        return self.loaded and (self._qwen.available or self._giga.available)
 
     @property
     def active_name(self) -> str:
-        if self._mistral.available:
-            return "mistral-small-24b"
+        if self._qwen.available:
+            return "qwen-2.5-7b"
         if self._giga.available:
             return "gigachat"
         return "none"
@@ -311,15 +312,15 @@ class SemanticModel:
     def load(self, model_dir: str | None = None) -> bool:
         """Инициализация без сетевых вызовов (сеть — только в explain)."""
         _ = model_dir  # остался для совместимости lifespan
-        has_mistral = self._mistral.configure()
+        has_qwen = self._qwen.configure()
         has_giga = self._giga.configure()
         self.loaded = True
-        if not has_mistral:
-            print("[SEMANTIC] OPENROUTER_API_KEY не задан — Mistral выключен", flush=True)
+        if not has_qwen:
+            print("[SEMANTIC] OPENROUTER_API_KEY не задан — Qwen выключен", flush=True)
         if not has_giga:
             print("[SEMANTIC] GIGACHAT_API_KEY не задан — GigaChat-fallback выключен", flush=True)
-        if has_mistral or has_giga:
-            print(f"[SEMANTIC] провайдеры: mistral={'on' if has_mistral else 'off'}, "
+        if has_qwen or has_giga:
+            print(f"[SEMANTIC] провайдеры: qwen={'on' if has_qwen else 'off'}, "
                   f"gigachat={'on' if has_giga else 'off'}", flush=True)
             return True
         print("[SEMANTIC] нет провайдеров — работает rule-based fallback", flush=True)
@@ -327,7 +328,7 @@ class SemanticModel:
 
     def _via_gigachat(self, text: str, text_len: int) -> tuple[str, float, float, str | None]:
         if not self._giga.available:
-            logger.error("[SEMANTIC] mistral fallback: gigachat недоступен -> fail-closed NONE")
+            logger.error("[SEMANTIC] qwen fallback: gigachat недоступен -> fail-closed NONE")
             self._bump("both_fail")
             return ("NONE", 0.0, 0.0, None)
         with _GIGA_SEM:
@@ -364,22 +365,22 @@ class SemanticModel:
         if not self.available or not (text or "").strip():
             return ("NONE", 0.0, 0.0, None)
         text_len = len(text or "")
-        if self._mistral.available:
-            with _MISTRAL_SEM:
+        if self._qwen.available:
+            with _QWEN_SEM:
                 t0 = time.perf_counter()
                 try:
-                    cat, conf = self._mistral.classify(text)
+                    cat, conf = self._qwen.classify(text)
                 except ProviderError as ex:
                     ms = int((time.perf_counter() - t0) * 1000)
-                    self._bump("mistral_fallback")
-                    logger.warning("[SEMANTIC] mistral fallback -> gigachat "
-                                   "| reason=%s | mistral_ms=%d | text_len=%d",
+                    self._bump("qwen_fallback")
+                    logger.warning("[SEMANTIC] qwen fallback -> gigachat "
+                                   "| reason=%s | qwen_ms=%d | text_len=%d",
                                    ex.reason, ms, text_len)
                     return self._via_gigachat(text, text_len)
                 ms = int((time.perf_counter() - t0) * 1000)
-            self._bump("mistral_ok")
-            logger.debug("[SEMANTIC] mistral ok | cat=%s conf=%.2f | ms=%d", cat, conf, ms)
-            self._local.provider = "mistral"
+            self._bump("qwen_ok")
+            logger.debug("[SEMANTIC] qwen ok | cat=%s conf=%.2f | ms=%d", cat, conf, ms)
+            self._local.provider = "qwen"
             none_score = 0.9 if cat == "NONE" else round(1.0 - conf, 4)
             return (cat, conf, none_score, None)
         return self._via_gigachat(text, text_len)
