@@ -13,6 +13,10 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:safemail}
     password: ${SPRING_DATASOURCE_PASSWORD:safemail}
     driver-class-name: org.postgresql.Driver
+    # Запас коннектов: processClaimed держит коннект всю обработку (~2с),
+    # при 8 потоках пула + веб-запросах дефолтных 10 впритык.
+    hikari:
+      maximum-pool-size: 20
   jpa:
     hibernate:
       ddl-auto: validate
