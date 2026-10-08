@@ -91,8 +91,8 @@
 
 **SLM**: вместо локальной модели — внешние LLM (`ml-classify/app/semantic.py`,
 ключи только в `.env`, без ключей/сети — rule-based fallback, fail-closed):
-Qwen через OpenRouter (primary) + GigaChat (fallback при падении Qwen,
-пулы 6+1, warning-лог `qwen fallback -> gigachat | reason | ms`).
+YandexGPT через Yandex Cloud (primary) + GigaChat (fallback при падении YandexGPT,
+пулы 6+1, warning-лог `yandex fallback -> gigachat | reason | ms`).
 Промпт просит `NONE` «с низкой уверенностью», поэтому raw у нормы ~0.05 и в порогах
 не участвует. `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
 семантика ловит парафразы при `NONE` (`0.65/0.05`, флаг `semantic:<cat>:<score>`);
@@ -164,7 +164,7 @@ gateway-java/   Spring Boot: smtp/, service/ (InboundPipelineService, MailRoutin
                 MessageService, AuthService), controller/, security/, domain/, repository/
 ml-parser/      FastAPI :8001 — parse-extract
 ml-enrich/      FastAPI :8002 — normalize-enrich
-ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + Qwen/GigaChat + semantic-veto)
+ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + YandexGPT/GigaChat + semantic-veto)
 frontend/       Next.js 14: app/(login,inbox,admin), lib/ (api, labels, auth), components/
 nginx/          TLS-терминация + gen-certs.sh
 Makefile        стенды dev/prod, проверки, e2e, контроль хардкода (`make help`)

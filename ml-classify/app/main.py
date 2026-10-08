@@ -1,6 +1,6 @@
 """svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + LLM-инференс.
 
-LLM: Qwen через OpenRouter (primary, ключ — только env OPENROUTER_API_KEY),
+LLM: YandexGPT через Yandex Cloud (primary, ключи — только env YANDEX_API_KEY/YANDEX_FOLDER_ID),
 при его падении — GigaChat (ключ — только env GIGACHAT_API_KEY).
 Ловит семантические парафразы без ключевых слов. Ключей/сети нет —
 работает детерминированный rule-based fallback (как раньше без файла модели).
@@ -315,9 +315,9 @@ def run_startup_tests() -> None:
     # Семантическое вето слабого сигнала (ложный карантин «менделеев + хлор»):
     # детерминировано, без сети — explain подменяется стабом, в конце restore.
     failed += run_veto_startup_tests()
-    # Роутер Qwen->GigaChat: fallback и его логи (стабы провайдеров, без сети).
+    # Роутер YandexGPT->GigaChat: fallback и его логи (стабы провайдеров, без сети).
     failed += run_router_startup_tests()
-    # Сниппет тела error-ответа OpenRouter (диагностика 403/429/5xx в логе).
+    # Сниппет тела error-ответа провайдера (диагностика 403/429/5xx в логе).
     failed += run_error_snippet_tests()
     # Подтверждение одиночного срабатывания семантики (стаб explain со счётчиком).
     failed += run_confirm_startup_tests()
@@ -401,17 +401,17 @@ def run_veto_startup_tests() -> int:
 
 
 def run_router_startup_tests() -> int:
-    """Роутер Qwen->GigaChat БЕЗ сети: стабы провайдеров + перехват логов.
+    """Роутер YandexGPT->GigaChat БЕЗ сети: стабы провайдеров + перехват логов.
     Новое правило — сначала тест-кейс, потом код (§4 AGENTS.md).
-    1. Qwen-timeout -> вердикт GigaChat + warning 'qwen fallback' с reason=timeout.
-    2. Qwen-ok -> вердикт Qwen, fallback-строк в логах нет.
+    1. Yandex-timeout -> вердикт GigaChat + warning 'yandex fallback' с reason=timeout.
+    2. Yandex-ok -> вердикт Yandex, fallback-строк в логах нет.
     3. Оба мертвы -> (NONE, 0.0, 0.0) + 'both providers failed' (fail-closed)."""
     import logging as _logging
 
     from . import semantic as _sem
     failed = 0
     model = SEMANTIC_MODEL
-    orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
+    orig_m, orig_g, orig_loaded = model._yandex, model._giga, model.loaded
     records: list[str] = []
 
     class _Cap(_logging.Handler):
@@ -439,32 +439,32 @@ def run_router_startup_tests() -> int:
 
     try:
         model.loaded = True
-        # 1. Qwen падает -> GigaChat + warning-лог с причиной.
-        model._qwen = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
+        # 1. Yandex падает -> GigaChat + warning-лог с причиной.
+        model._yandex = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
         model._giga = _Fake(result=("OTHER_THREAT", 0.8))  # type: ignore
         records.clear()
         got = model.explain("тестовое письмо про поджог")
         if got[:2] != ("OTHER_THREAT", 0.8):
             print(f"[TEST FAIL] router fallback got {got}", flush=True)
             failed += 1
-        if not any("qwen fallback" in m and "reason=timeout" in m for m in records):
+        if not any("yandex fallback" in m and "reason=timeout" in m for m in records):
             print(f"[TEST FAIL] router fallback log missing: {records}", flush=True)
             failed += 1
-        if model.counters.get("qwen_fallback", 0) < 1:
-            print("[TEST FAIL] router qwen_fallback counter not bumped", flush=True)
+        if model.counters.get("yandex_fallback", 0) < 1:
+            print("[TEST FAIL] router yandex_fallback counter not bumped", flush=True)
             failed += 1
-        # 2. Qwen жив -> его вердикт, fallback-строк нет.
-        model._qwen = _Fake(result=("NONE", 0.05))  # type: ignore
+        # 2. Yandex жив -> его вердикт, fallback-строк нет.
+        model._yandex = _Fake(result=("NONE", 0.05))  # type: ignore
         records.clear()
         got2 = model.explain("обычное письмо про совещание")
         if got2[0] != "NONE":
-            print(f"[TEST FAIL] router qwen-ok got {got2}", flush=True)
+            print(f"[TEST FAIL] router yandex-ok got {got2}", flush=True)
             failed += 1
-        if any("qwen fallback" in m for m in records):
-            print(f"[TEST FAIL] router qwen-ok logged fallback: {records}", flush=True)
+        if any("yandex fallback" in m for m in records):
+            print(f"[TEST FAIL] router yandex-ok logged fallback: {records}", flush=True)
             failed += 1
         # 3. Оба мертвы -> нули + error-лог (карантин через эвристику сохранится).
-        model._qwen = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
+        model._yandex = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
         model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
         records.clear()
         got3 = model.explain("что-то")
@@ -475,21 +475,21 @@ def run_router_startup_tests() -> int:
             print(f"[TEST FAIL] router both-dead log missing: {records}", flush=True)
             failed += 1
     finally:
-        model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        model._yandex, model._giga, model.loaded = orig_m, orig_g, orig_loaded
         with model._lock:
             for k in model._counters:
                 model._counters[k] = 0
         slog.removeHandler(cap)
         slog.setLevel(old_level)
     if not failed:
-        print("[ROUTER TEST] qwen->gigachat fallback + логи в порядке", flush=True)
+        print("[ROUTER TEST] yandex->gigachat fallback + логи в порядке", flush=True)
     return failed
 
 
 def run_error_snippet_tests() -> int:
-    """Сниппет тела error-ответа OpenRouter для диагностики 403/429/5xx.
+    """Сниппет тела error-ответа провайдера + парсинг ответа YandexGPT.
     Без сети: стаб ответа + стаб провайдера. Проверяем обрезку/схлопывание,
-    x-request-id, пустое тело и доставку reason со сниппетом в warning-лог."""
+    x-request-id, пустое тело, разбор alternatives и доставку reason в лог."""
     import logging as _logging
 
     from . import semantic as _sem
@@ -518,9 +518,30 @@ def run_error_snippet_tests() -> int:
     if _sem._error_snippet(_Resp("")) != "empty-body":  # type: ignore
         print("[TEST FAIL] snippet empty body", flush=True)
         failed += 1
+    # 3. Парсинг ответа YandexGPT: ок, пустые alternatives, мусор.
+    ok_body = {"result": {"alternatives": [
+        {"message": {"role": "assistant", "text": '{"category":"NONE"}'},
+         "status": "ALTERNATIVE_STATUS_FINAL"}]}}
+    try:
+        got_text = _sem._parse_yandex_response(ok_body)
+    except Exception:
+        got_text = ""
+    if "NONE" not in got_text:
+        print("[TEST FAIL] yandex parse ok", flush=True)
+        failed += 1
+    for bad in ({"result": {"alternatives": []}},
+                {"result": {}},
+                {},
+                {"result": {"alternatives": [{"message": {"text": "  "}}]}}):
+        try:
+            _sem._parse_yandex_response(bad)  # type: ignore
+            print(f"[TEST FAIL] yandex parse accepted garbage: {bad}", flush=True)
+            failed += 1
+        except _sem.ProviderError:
+            pass
     # reason со сниппетом доходит до warning-лога роутера (стаб classify).
     model = SEMANTIC_MODEL
-    orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
+    orig_m, orig_g, orig_loaded = model._yandex, model._giga, model.loaded
     records: list[str] = []
 
     class _Cap(_logging.Handler):
@@ -545,17 +566,17 @@ def run_error_snippet_tests() -> int:
 
     try:
         model.loaded = True
-        model._qwen = _Fake(error=_sem.ProviderError(  # type: ignore
+        model._yandex = _Fake(error=_sem.ProviderError(  # type: ignore
             "http_403:Access denied for region | x-request-id=req-1"))
         model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
         records.clear()
         model.explain("тестовое письмо")
-        if not any("qwen fallback" in m and "http_403:Access denied for region" in m
+        if not any("yandex fallback" in m and "http_403:Access denied for region" in m
                    and "x-request-id=req-1" in m for m in records):
             print(f"[TEST FAIL] snippet log missing: {records}", flush=True)
             failed += 1
     finally:
-        model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        model._yandex, model._giga, model.loaded = orig_m, orig_g, orig_loaded
         slog.removeHandler(cap)
         slog.setLevel(old_level)
     if not failed:

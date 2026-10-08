@@ -1,5 +1,5 @@
 # ml-classify: одностадийная сборка — локальной SLM больше нет.
-# Инференс: Mistral через OpenRouter (primary, env OPENROUTER_API_KEY)
+# Инференс: YandexGPT (primary, env YANDEX_API_KEY/YANDEX_FOLDER_ID)
 # + GigaChat (fallback, env GIGACHAT_API_KEY).
 # Без ключей/сети сервис стартует и работает в rule-based fallback.
 FROM python:3.12-slim
