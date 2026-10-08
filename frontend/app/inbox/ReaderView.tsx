@@ -146,7 +146,7 @@ export default function ReaderView({ id, token, folder, onBack, onChanged }: Pro
               Не доставлено{msg.lastError ? `: ${msg.lastError}` : ''}. Проверьте адрес и relay шлюза.
             </div>
           )}
-          {msg.verdict && msg.verdict !== 'NONE' && msg.status !== 'DELIVERED' && (
+          {!analyzing && msg.verdict && msg.verdict !== 'NONE' && msg.status !== 'DELIVERED' && (
             <div className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2 flex items-center gap-2">
               <WarnIcon className="w-4 h-4 shrink-0" />
               <span>

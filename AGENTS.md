@@ -55,6 +55,11 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
   через torch+optimum, в рантайме только `numpy/onnxruntime/transformers`).
   `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает), семантика ловит
   парафразы при `NONE` (`TH=0.65`, `MARGIN=0.05`, флаг `semantic:<cat>:<score>`).
+  Вето: слабый сигнал (`<0.75`, без stopword/profanity) гасится разборчивым `NONE`
+  семантики (`available` + sem `NONE` + none-скор `≥0.85`, `VETO_NONE_MIN`,
+  флаг `semantic-veto:<cat>:<score>`); raw у нормы по промпту всегда низкий
+  (~0.05) и в пороге не участвует. Без ключа/сети fallback (`0.0/0.0`,
+  safety-блок, мусор) порог не проходит — fail-closed.
   Сборке нужен интернет (HF в stage 1); без сети собирать из кэша — иначе только fallback.
   Комментарий SLM (`semantic_comment` из `classify-threat`, колонки `V7`) —
   только в шторке `/admin` (получателю не виден); у старых писем NULL.

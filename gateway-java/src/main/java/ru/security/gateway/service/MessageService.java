@@ -191,7 +191,11 @@ public class MessageService {
     }).toList());
     dto.setAttachmentCount(dto.getAttachments().size());
     dto.setLastError(lastFailure(id));
-    analysisRepo.findByMessageId(id).ifPresent(a -> {
+    // Вердикт не-админу — только при терминальном статусе: в PENDING/PARSED/…
+    // строка анализа может быть stale (reprocess/resetStale), получатель тогда
+    // видел бы прошлый вердикт как текущий. Админ видит всегда (инженерия).
+    boolean showVerdict = currentUserIsAdmin() || isTerminal(m.getStatus());
+    if (showVerdict) analysisRepo.findByMessageId(id).ifPresent(a -> {
       dto.setVerdict(a.getFinalVerdict());
       MessageDto.ThreatReportDto t = new MessageDto.ThreatReportDto();
       t.setCategory(a.getFinalVerdict());
@@ -216,6 +220,12 @@ public class MessageService {
       return d;
     }).toList());
     return dto;
+  }
+
+  /** Терминальный статус = анализ завершён, вердикт финальный (как TERMINAL_STATUSES на фронте). */
+  static boolean isTerminal(MessageStatus s) {
+    return s == MessageStatus.DELIVERED || s == MessageStatus.REROUTED
+        || s == MessageStatus.FORWARDED || s == MessageStatus.FAILED;
   }
 
   /** Роль из JWT (фильтр кладёт ROLE_*); без аутентификации — обычный пользователь. */
@@ -256,6 +266,10 @@ public class MessageService {
     Message m = messages.findById(id).orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
     m.setStatus(MessageStatus.PENDING);
     m.setProcessedAt(null);
+    // Старый анализ удаляем тут же: иначе деталка в статусе PENDING отдавала бы
+    // ПРОШЛЫЙ вердикт как текущий («В очереди анализа» + «Вердикт: … 75%»
+    // одновременно + утечка вердикта не-админу в промежуточном статусе).
+    analysisRepo.findByMessageId(id).ifPresent(analysisRepo::delete);
     // C: сразу ставим в пул после коммита — не ждём следующий 5-с полл.
     // claim атомарный (SKIP LOCKED), двойной обработки с поллером не будет:
     // кто первым сделал claimAsInProgress, тот и обрабатывает.

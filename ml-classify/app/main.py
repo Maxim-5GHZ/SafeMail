@@ -16,6 +16,16 @@ from .semantic import MODEL as SEMANTIC_MODEL
 from .semantic import MODEL_NAME
 from .prototypes import RU_CATEGORY, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
+# Вето семантики над слабым эвристическим сигналом: разборчивый ответ NONE от SLM
+# (none-скор >= VETO_NONE_MIN) гасит одиночный маркер без усилителей
+# («менделеев + хлор» — учебный контекст, а не техногенная угроза).
+# none-скор — единственный реальный сигнал: промпт просит у модели NONE
+# «с низкой уверенностью», поэтому raw у нормы всегда ~0.05 и в пороге не участвует.
+# Мультихиты (>=0.75), стоп-слова админа и токсичность вето не касается.
+# Без ключа/сети fallback отдаёт (NONE, 0.0, 0.0), safety-блок и мусор — тоже
+# нули: порог не проходят, поведение fail-closed (карантин как раньше).
+VETO_NONE_MIN = 0.85
+
 
 class ToxicityAndProfanityFilter:
     # Безопасные целые слова/подстроки, которые нельзя считать матом (ложные срабатывания).
@@ -243,6 +253,9 @@ def run_startup_tests() -> None:
     if cat_empty != "TERRORISM":
         print(f"[TEST FAIL] empty stopwords changed behavior: {cat_empty}", flush=True)
         failed += 1
+    # Семантическое вето слабого сигнала (ложный карантин «менделеев + хлор»):
+    # детерминировано, без сети — explain подменяется стабом, в конце restore.
+    failed += run_veto_startup_tests()
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
     failed += run_semantic_startup_tests()
     # Формат комментария SLM для шторки: одна строка, стабильные маркеры.
@@ -251,6 +264,66 @@ def run_startup_tests() -> None:
         print(f"[INIT FAIL] {failed} тестов провалено", flush=True)
         sys.exit(1)
     print("[INIT SUCCESS] Все startup-тесты прошли.", flush=True)
+
+
+def run_veto_startup_tests() -> int:
+    """Вето: слабый эвристический сигнал (<0.75) гасится уверенным NONE семантики.
+    Живую сеть не трогаем — SEMANTIC_MODEL.explain подменяется стабами.
+    Позитив: учебный «хлор» уходит в NONE с флагом semantic-veto.
+    Анти-кейсы: стоп-слово, токсичность, сильный сигнал, согласие семантики
+    с угрозой и fallback (без ключа/сети) вето НЕ дают — карантин сохраняется."""
+    failed = 0
+    orig_explain = SEMANTIC_MODEL.explain
+    cls = type(SEMANTIC_MODEL)
+    orig_available = cls.available
+
+    def fuse_with(norm: str, sw: list[StopwordRule]):
+        hcat, hscore, hflags, _hexp = heuristic_scan(norm, sw)
+        fcat, fscore, fflags, _fexp, _sc, _ss, _cm = fuse_verdict(
+            hcat, hscore, hflags, "t", norm)
+        return hcat, hscore, fcat, fscore, fflags
+
+    def check(name: str, text: str, sw: list[StopwordRule],
+              exp_cat: str, exp_veto: bool) -> None:
+        nonlocal failed
+        norm = FILTER.normalize(text)
+        hcat, hscore, fcat, _fs, fflags = fuse_with(norm, sw)
+        has_veto = any(f.startswith("semantic-veto:") for f in fflags)
+        if hcat == "NONE" and exp_veto:
+            print(f"[TEST FAIL] veto setup: heuristic NONE for '{text}'", flush=True)
+            failed += 1
+            return
+        if fcat != exp_cat or has_veto != exp_veto:
+            print(f"[TEST FAIL] veto/{name} '{text}' got {fcat}/{fflags}", flush=True)
+            failed += 1
+
+    try:
+        sw_rules = [StopwordRule(pattern="взрывчатка", category="TERRORISM")]
+        cls.available = property(lambda self: True)  # type: ignore
+        # Фаза 1: семантика за норму — вето срабатывает только на слабый сигнал.
+        # Стаб реалистичный: промпт просит NONE «с низкой уверенностью» (raw ~0.05),
+        # вето смотрит на none-скор, а не на raw.
+        SEMANTIC_MODEL.explain = lambda text: ("NONE", 0.05, 0.9, None)  # type: ignore
+        check("chemistry", "выучи таблицу менделеева и овр с хлором", [], "NONE", True)
+        check("no-veto-stopword", "на складе хранится взрывчатка, забирай",
+              sw_rules, "TERRORISM", False)
+        check("no-veto-toxic", "это полный пиздец с хлором", [], "MAN_MADE", False)
+        check("no-veto-strong", "на перегоне сход цистерн с хлором", [], "MAN_MADE", False)
+        # Фаза 2: семантика подтверждает угрозу — вето нет, согласие (max).
+        SEMANTIC_MODEL.explain = lambda text: ("MAN_MADE", 0.9, 0.1, None)  # type: ignore
+        check("no-veto-agree", "выучи таблицу менделеева и овр с хлором",
+              [], "MAN_MADE", False)
+        # Фаза 3: fallback без ключа/сети (0.0/0.0) — fail-closed, вето нет.
+        cls.available = property(lambda self: False)  # type: ignore
+        SEMANTIC_MODEL.explain = lambda text: ("NONE", 0.0, 0.0, None)  # type: ignore
+        check("no-veto-fallback", "выучи таблицу менделеева и овр с хлором",
+              [], "MAN_MADE", False)
+    finally:
+        SEMANTIC_MODEL.explain = orig_explain  # type: ignore
+        cls.available = orig_available  # type: ignore
+    if not failed:
+        print("[VETO TEST] слабый сигнал гасится, 5 анти-кейсов держат карантин", flush=True)
+    return failed
 
 
 def run_semantic_startup_tests() -> int:
@@ -300,12 +373,16 @@ def run_semantic_startup_tests() -> int:
 
 def build_semantic_comment(available: bool, hei_category: str, strong_heu: bool,
                            caught: bool, best: str, score: float, none: float,
-                           nearest: str | None) -> str:
+                           nearest: str | None, vetoed: bool = False) -> str:
     """Человекочитаемый итог SLM для шторки /admin. Всегда одна строка,
     категории — по-русски, ниже порога — честно «не повлияло», а не «видит».
     (Бэкенд — GigaChat, но модель отвечает от лица SLM, поэтому подпись та же.)"""
     if not available:
         return "SLM недоступна — вердикт по эвристике (fallback)."
+    if vetoed:
+        ru_hei = RU_CATEGORY.get(hei_category, hei_category)
+        return (f"SLM сняла слабый сигнал эвристики ({ru_hei}): "
+                f"угроз не видит (норма {none:.2f}).")
     ru = RU_CATEGORY.get(best, best)
     if caught:
         margin = score - none
@@ -350,8 +427,15 @@ def run_semantic_comment_tests() -> int:
     if "ниже порога" not in low or "MAN_MADE" in low or "техногенную аварию" not in low:
         print(f"[SEMANTIC COMMENT FAIL] below-threshold: {low!r}", flush=True)
         failed += 1
+    # 5. Вето слабого сигнала → одна строка: что снято + норма, без сырого enum.
+    veto_c = build_semantic_comment(True, "MAN_MADE", False, False, "NONE", 0.95, 0.9, None,
+                                    vetoed=True)
+    if ("сняла слабый сигнал" not in veto_c or "техногенную аварию" not in veto_c
+            or "MAN_MADE" in veto_c or "\n" in veto_c or not veto_c.startswith("SLM")):
+        print(f"[SEMANTIC COMMENT FAIL] veto: {veto_c!r}", flush=True)
+        failed += 1
     if not failed:
-        print("[SEMANTIC COMMENT TEST] 4/4 формата комментария в порядке", flush=True)
+        print("[SEMANTIC COMMENT TEST] 5/5 формата комментария в порядке", flush=True)
     return failed
 
 
@@ -367,6 +451,9 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
     3. Слабая эвристика + согласие семантики — confidence = max.
     4. Конфликт — побеждает эвристика, оба сигнала фиксируются в explanation.
     5. Модели нет — чистый эвристический вердикт (как раньше).
+    6. Вето: слабая эвристика (<0.75, без stopword/profanity) + разборчивое NONE
+       семантики (available, sem NONE, none-скор >= VETO_NONE_MIN) — итог NONE
+       с флагом semantic-veto (одиночный бытовой маркер — не угроза).
     """
     sem_best, sem_raw, sem_none, sem_nearest = SEMANTIC_MODEL.explain(normalized)
     caught = (sem_best != "NONE" and sem_raw >= SEMANTIC_THRESHOLD
@@ -377,11 +464,20 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
         flags = flags + [f"semantic:{sem_cat.lower()}:{sem_score:.2f}"]
     strong_heu = category != "NONE" and (
         score >= 0.75 or any(f.startswith("stopword:") for f in flags))
+    weak_heu = (category != "NONE" and not strong_heu
+                and not any(f.startswith("profanity:") for f in flags))
+    veto = (weak_heu and SEMANTIC_MODEL.available and sem_cat == "NONE"
+            and sem_none >= VETO_NONE_MIN)
     comment = build_semantic_comment(
         SEMANTIC_MODEL.available, category, strong_heu, caught,
-        sem_best, sem_raw, sem_none, sem_nearest)
+        sem_best, sem_raw, sem_none, sem_nearest, vetoed=veto)
     if not SEMANTIC_MODEL.available or (sem_cat == "NONE" and sem_score == 0.0):
         return (category, score, flags, explanation, "NONE", 0.0, comment)
+    if veto:
+        flags = flags + [f"semantic-veto:{category.lower()}:{score:.2f}"]
+        explanation = (f"{explanation} Слабый сигнал снят семантикой: "
+                       f"SLM угроз не видит (норма {sem_none:.2f}).")
+        return ("NONE", sem_raw, flags, explanation, "NONE", sem_score, comment)
     if strong_heu:
         if sem_cat == category and sem_cat != "NONE":
             explanation += f" Семантика подтверждает ({sem_score:.2f})."
