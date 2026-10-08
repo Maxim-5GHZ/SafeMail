@@ -59,10 +59,12 @@ public class GatewayConfig {
     // B: параллельная обработка очереди — одно медленное письмо (Yandex/GigaChat)
     // больше не держит весь batch из 10. claim остаётся атомарным (SKIP LOCKED),
     // каждое письмо — в своей транзакции через processClaimed.
+    // 8/15: batch 15 разбирается за один заход (~2с), запас на всплески SMTP.
+    // Потолок выше упирается в семафор Mistral (6) и пул Hikari (30) — см. application.yml.
     org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor ex =
         new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
-    ex.setCorePoolSize(4);
-    ex.setMaxPoolSize(8);
+    ex.setCorePoolSize(8);
+    ex.setMaxPoolSize(15);
     ex.setQueueCapacity(100);
     ex.setThreadNamePrefix("pipeline-");
     ex.setWaitForTasksToCompleteOnShutdown(true);

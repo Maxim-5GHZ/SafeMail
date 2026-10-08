@@ -120,7 +120,7 @@ public class InboundPipelineService {
     }
     List<UUID> ids;
     try {
-      ids = messages.pickForProcessing("PENDING", 10);
+      ids = messages.pickForProcessing("PENDING", 15);
     } catch (Exception e) {
       log.warn("Poll skip (БД недоступна?): {}", e.getMessage());
       return;
