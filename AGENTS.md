@@ -195,8 +195,9 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   Семантика — `app/semantic.py`: локальный ONNX (`OnnxRubertProvider`, primary,
   детерминирован побайтово, офлайн) + GigaChat
   (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Пулы запросов 4+1
-  (семафоры): каждый `explain()` сначала в ONNX, при падении —
-  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение ONNX
+  (семафоры; ONNX-слоты — env `ONNX_MAX_SLOTS`, дефолт 4 под 4 ядра VPS,
+  локально с запасом ядер можно поднять): каждый `explain()` сначала в ONNX,
+  при падении — один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение ONNX
   логируется warning-строкой `onnx fallback -> ... | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
   счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.

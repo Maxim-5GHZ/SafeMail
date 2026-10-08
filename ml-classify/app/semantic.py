@@ -33,9 +33,18 @@ MODEL_NAME = "rubert-tiny2-onnx"
 
 # Бюджет под gateway readTimeout 15с: ONNX ~десятки мс + ~5.5с GigaChat.
 GIGA_TIMEOUT_S = 5.5
-# Пулы запросов: 4 параллельных ONNX (под 4 ядра сервера)
+# Пулы запросов: N параллельных ONNX (дефолт 4 — под 4 ядра сервера;
+# локально с запасом ядер поднимается через env ONNX_MAX_SLOTS, кламп 1..16)
 # + 1 зарезервированный GigaChat.
-ONNX_MAX_SLOTS = 4
+def _env_int(name: str, default: int, lo: int, hi: int) -> int:
+    try:
+        v = int((os.getenv(name, "") or "").strip())
+    except ValueError:
+        return default
+    return max(lo, min(hi, v))
+
+
+ONNX_MAX_SLOTS = _env_int("ONNX_MAX_SLOTS", 4, 1, 16)
 ONNX_THREADS = 2  # intra_op внутри сессии (inter=1)
 ONNX_MAX_TOKENS = 512  # предел позиций rubert
 ONNX_TEXT_LIMIT = 2000  # символов на вход (как у внешних провайдеров)
@@ -344,7 +353,8 @@ class SemanticModel:
         if not has_giga:
             print("[SEMANTIC] GIGACHAT_API_KEY не задан — GigaChat-fallback выключен", flush=True)
         if has_onnx or has_giga:
-            print(f"[SEMANTIC] провайдеры: onnx={'on' if has_onnx else 'off'}, "
+            print(f"[SEMANTIC] провайдеры: onnx={'on' if has_onnx else 'off'}"
+                  f"(slots={ONNX_MAX_SLOTS}), "
                   f"gigachat={'on' if has_giga else 'off'}", flush=True)
             return True
         print("[SEMANTIC] нет провайдеров — работает rule-based fallback", flush=True)

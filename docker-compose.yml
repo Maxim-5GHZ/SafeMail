@@ -44,6 +44,9 @@ services:
       - PORT=8003
       # Локальная SLM (ONNX) — primary, GigaChat — fallback при её падении.
       # Пусто/нет сети — сервис стартует в rule-based fallback (эвристика главная).
+      # ONNX_MAX_SLOTS — параллельных инференсов (дефолт 4 под 4 ядра VPS;
+      # локально с запасом ядер можно поднять, напр. 8).
+      - ONNX_MAX_SLOTS=${ONNX_MAX_SLOTS:-}
       - GIGACHAT_API_KEY=${GIGACHAT_API_KEY:-}
     restart: unless-stopped
 
