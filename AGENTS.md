@@ -60,8 +60,8 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
   primary (mean-pooling + косинус к `PROTOTYPES`, пороги `TH=0.65/MARGIN=0.05`
   из прототипа 12/15; победа угрозы только с маржой `ONNX_MARGIN=0.08` над NONE —
   иначе шумовая полоса 0.55–0.65 флипает вердикт от пробелов/регистра;
-  спорное уходит в NONE и дальше решает эвристика+вето), цепочка
-  `onnx -> qwen -> gigachat` (счётчики `onnx_ok/onnx_fallback` в `/health.semantic`,
+   спорное уходит в NONE и дальше решает эвристика+вето), цепочка
+   `onnx -> gigachat` (счётчики `onnx_ok/onnx_fallback` в `/health.semantic`,
   флаг `semantic-provider:onnx`). JVM gateway поджата `-Xmx768m` через
   `JDK_JAVA_OPTIONS` (иначе OOM на 4-гиговом сервере).
   `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает), семантика ловит
@@ -193,24 +193,19 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
   Семантика — `app/semantic.py`: локальный ONNX (`OnnxRubertProvider`, primary,
-  детерминирован побайтово, офлайн) + Qwen через OpenRouter
-  (`OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL`, `httpx`, таймаут 8с) +
-  GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Конкурентный всплеск
-  OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 4+6+1
-  (семафоры + keep-alive): каждый `explain()` сначала в ONNX, при падении —
-  Qwen, потом один заход в GigaChat; все упали — `(NONE,0,0)` fail-closed. Падение ONNX/Qwen
-  логируется warning-строкой `onnx/qwen fallback -> ... | reason | ms`
+  детерминирован побайтово, офлайн) + GigaChat
+  (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Пулы запросов 4+1
+  (семафоры): каждый `explain()` сначала в ONNX, при падении —
+  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение ONNX
+  логируется warning-строкой `onnx fallback -> ... | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
-  reason при HTTP-ошибках (403/429/5xx) несёт сниппет тела ответа OpenRouter
-  (первые 300 символов + `x-request-id`, `_error_snippet`) — иначе причина 403
-  (регион/ключ/маршрут) теряется;
   счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.
   Кап генерации `MAX_TOKENS=300` (ответ — короткий JSON, запас 3x): обрезка даёт
   `non_json` → штатный fallback, а не неверный вердикт.
   Ключи только из `.env` (в репо — пустые плейсхолдеры `.env.example`).
 - Startup-тесты (`run_startup_tests`, `lifespan`) обязаны проходить,
-  иначе процесс падает с `exit 1`. Живые LLM-кейсы семантики — warn-only:
-  категория-сосед на пограничной парафразе старт не валит (иначе внешний LLM
+  иначе процесс падает с `exit 1`. Живые семантические кейсы — warn-only:
+  категория-сосед на пограничной парафразе старт не валит (иначе fallback-LLM
   кладёт сервис в crash-loop); фатальны детерминированные тесты
   (эвристика/вето/роутер/формат) и ложное срабатывание на чистых NONE-кейсах.
   Новое правило — сначала тест-кейс

@@ -90,9 +90,9 @@
    fallback, SMTP-сессия не страдает (тяжёлое — в поллере).
 
 **SLM**: локальный `rubert-tiny2` (ONNX, CPU, ~200 МБ — primary, офлайн,
-детерминирован) + Qwen через OpenRouter + GigaChat (fallback-цепочка,
+детерминирован) + GigaChat (fallback,
 ключи только в `.env`, без провайдеров — rule-based fallback, fail-closed):
-цепочка `onnx -> qwen -> gigachat` (пулы 4+6+1, счётчики в `/health.semantic`).
+цепочка `onnx -> gigachat` (пулы 4+1, счётчики в `/health.semantic`).
 Промпт внешних LLM просит `NONE` «с низкой уверенностью», поэтому их raw у нормы
 ~0.05 и в порогах не участвует; у ONNX none-скор нормируется обёрткой (0.9 при NONE). `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
 семантика ловит парафразы при `NONE` (`0.65/0.05`, флаг `semantic:<cat>:<score>`);
@@ -164,7 +164,7 @@ gateway-java/   Spring Boot: smtp/, service/ (InboundPipelineService, MailRoutin
                 MessageService, AuthService), controller/, security/, domain/, repository/
 ml-parser/      FastAPI :8001 — parse-extract
 ml-enrich/      FastAPI :8002 — normalize-enrich
-ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + Qwen/GigaChat + semantic-veto)
+ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + ONNX/GigaChat + semantic-veto)
 frontend/       Next.js 14: app/(login,inbox,admin), lib/ (api, labels, auth), components/
 nginx/          TLS-терминация + gen-certs.sh
 Makefile        стенды dev/prod, проверки, e2e, контроль хардкода (`make help`)

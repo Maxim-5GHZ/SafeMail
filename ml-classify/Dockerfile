@@ -1,5 +1,5 @@
 # ml-classify: локальная SLM (rubert-tiny2, ONNX, CPU) — primary,
-# Qwen через OpenRouter + GigaChat — fallback при её ошибке/отсутствии.
+# GigaChat — fallback при её ошибке/отсутствии.
 # Stage 1 экспортирует веса из HuggingFace (интернет нужен ТОЛЬКО на сборке);
 # stage 2 — slim-рантайм без torch (~300-400 МБ образ, ~222 МБ RAM — в лимит 4 ГБ).
 # Без сети на сборке stage 1 упадёт — собирать там, где HF доступен.

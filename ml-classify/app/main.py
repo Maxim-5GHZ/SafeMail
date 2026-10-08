@@ -1,8 +1,8 @@
-"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + LLM-инференс.
+"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + SLM-инференс.
 
-LLM: Qwen через OpenRouter (primary, ключ — только env OPENROUTER_API_KEY),
+SLM: локальный ONNX rubert-tiny2 (primary, офлайн, детерминирован),
 при его падении — GigaChat (ключ — только env GIGACHAT_API_KEY).
-Ловит семантические парафразы без ключевых слов. Ключей/сети нет —
+Ловит семантические парафразы без ключевых слов. Провайдеров нет —
 работает детерминированный rule-based fallback (как раньше без файла модели).
 """
 import re
@@ -315,10 +315,8 @@ def run_startup_tests() -> None:
     # Семантическое вето слабого сигнала (ложный карантин «менделеев + хлор»):
     # детерминировано, без сети — explain подменяется стабом, в конце restore.
     failed += run_veto_startup_tests()
-    # Роутер Qwen->GigaChat: fallback и его логи (стабы провайдеров, без сети).
+    # Роутер ONNX->GigaChat: fallback и его логи (стабы провайдеров, без сети).
     failed += run_router_startup_tests()
-    # Сниппет тела error-ответа провайдера (диагностика 403/429/5xx в логе).
-    failed += run_error_snippet_tests()
     # Локальная SLM (ONNX): самомэтч эталонов, чистые — NONE.
     failed += run_onnx_startup_tests()
     # Подтверждение одиночного срабатывания семантики (стаб explain со счётчиком).
@@ -403,20 +401,17 @@ def run_veto_startup_tests() -> int:
 
 
 def run_router_startup_tests() -> int:
-    """Роутер Qwen->GigaChat БЕЗ сети: стабы провайдеров + перехват логов.
+    """Роутер ONNX->GigaChat БЕЗ сети: стабы провайдеров + перехват логов.
     Новое правило — сначала тест-кейс, потом код (§4 AGENTS.md).
-    1. Qwen-timeout -> вердикт GigaChat + warning 'qwen fallback' с reason=timeout.
-    2. Qwen-ok -> вердикт Qwen, fallback-строк в логах нет.
+    1. ONNX падает -> вердикт GigaChat + warning 'onnx fallback' с reason.
+    2. ONNX жив -> его вердикт, fallback-строк в логах нет.
     3. Оба мертвы -> (NONE, 0.0, 0.0) + 'both providers failed' (fail-closed)."""
     import logging as _logging
 
     from . import semantic as _sem
     failed = 0
     model = SEMANTIC_MODEL
-    orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
-    orig_o = model._onnx
-    # ONNX глушим: тесты роутера проверяют цепочку qwen->gigachat,
-    # живой ONNX в образе иначе перехватит explain первым (он primary).
+    orig_o, orig_g, orig_loaded = model._onnx, model._giga, model.loaded
     records: list[str] = []
 
     class _Cap(_logging.Handler):
@@ -442,37 +437,40 @@ def run_router_startup_tests() -> int:
             assert self._result is not None
             return self._result
 
+    class _FakeOff(_Fake):
+        def __init__(self) -> None:
+            super().__init__(error=_sem.ProviderError("off"))
+            self.available = False
+
     try:
         model.loaded = True
-        model._onnx = _Fake(error=_sem.ProviderError("off"))  # type: ignore
-        model._onnx.available = False
-        # 1. Qwen падает -> GigaChat + warning-лог с причиной.
-        model._qwen = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
+        # 1. ONNX падает -> GigaChat + warning-лог с причиной.
+        model._onnx = _Fake(error=_sem.ProviderError("boom"))  # type: ignore
         model._giga = _Fake(result=("OTHER_THREAT", 0.8))  # type: ignore
         records.clear()
         got = model.explain("тестовое письмо про поджог")
         if got[:2] != ("OTHER_THREAT", 0.8):
             print(f"[TEST FAIL] router fallback got {got}", flush=True)
             failed += 1
-        if not any("qwen fallback" in m and "reason=timeout" in m for m in records):
+        if not any("onnx fallback" in m and "boom" in m for m in records):
             print(f"[TEST FAIL] router fallback log missing: {records}", flush=True)
             failed += 1
-        if model.counters.get("qwen_fallback", 0) < 1:
-            print("[TEST FAIL] router qwen_fallback counter not bumped", flush=True)
+        if model.counters.get("onnx_fallback", 0) < 1:
+            print("[TEST FAIL] router onnx_fallback counter not bumped", flush=True)
             failed += 1
-        # 2. Qwen жив -> его вердикт, fallback-строк нет.
-        model._qwen = _Fake(result=("NONE", 0.05))  # type: ignore
+        # 2. ONNX жив -> его вердикт, fallback-строк нет.
+        model._onnx = _Fake(result=("NONE", 0.05))  # type: ignore
         records.clear()
         got2 = model.explain("обычное письмо про совещание")
         if got2[0] != "NONE":
-            print(f"[TEST FAIL] router qwen-ok got {got2}", flush=True)
+            print(f"[TEST FAIL] router onnx-ok got {got2}", flush=True)
             failed += 1
-        if any("qwen fallback" in m for m in records):
-            print(f"[TEST FAIL] router qwen-ok logged fallback: {records}", flush=True)
+        if any("fallback" in m for m in records):
+            print(f"[TEST FAIL] router onnx-ok logged fallback: {records}", flush=True)
             failed += 1
         # 3. Оба мертвы -> нули + error-лог (карантин через эвристику сохранится).
-        model._qwen = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
-        model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
+        model._onnx = _Fake(error=_sem.ProviderError("boom"))  # type: ignore
+        model._giga = _FakeOff()  # type: ignore
         records.clear()
         got3 = model.explain("что-то")
         if got3 != ("NONE", 0.0, 0.0, None):
@@ -482,98 +480,14 @@ def run_router_startup_tests() -> int:
             print(f"[TEST FAIL] router both-dead log missing: {records}", flush=True)
             failed += 1
     finally:
-        model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
-        model._onnx = orig_o  # type: ignore
+        model._onnx, model._giga, model.loaded = orig_o, orig_g, orig_loaded
         with model._lock:
             for k in model._counters:
                 model._counters[k] = 0
         slog.removeHandler(cap)
         slog.setLevel(old_level)
     if not failed:
-        print("[ROUTER TEST] qwen->gigachat fallback + логи в порядке", flush=True)
-    return failed
-
-
-def run_error_snippet_tests() -> int:
-    """Сниппет тела error-ответа OpenRouter для диагностики 403/429/5xx.
-    Без сети: стаб ответа + стаб провайдера. Проверяем обрезку/схлопывание,
-    x-request-id, пустое тело и доставку reason со сниппетом в warning-лог."""
-    import logging as _logging
-
-    from . import semantic as _sem
-    failed = 0
-
-    class _Resp:
-        def __init__(self, text: str, req_id: str = "") -> None:
-            self.text = text
-            self._h = {"x-request-id": req_id} if req_id else {}
-
-        @property
-        def headers(self):  # type: ignore
-            return self
-
-        def get(self, key: str, default: str = "") -> str:
-            return self._h.get(key, default)
-
-    long_body = '{"error": {"message": "Access denied\nfor region ' + "x" * 500 + '"}}'
-    s = _sem._error_snippet(_Resp(long_body, "req-123"))  # type: ignore
-    if "\n" in s or "Access denied for region" not in s or "x-request-id=req-123" not in s:
-        print(f"[TEST FAIL] snippet format: {s[:100]!r}", flush=True)
-        failed += 1
-    if len(s) > 300 + len(" | x-request-id=req-123"):
-        print(f"[TEST FAIL] snippet not truncated: len={len(s)}", flush=True)
-        failed += 1
-    if _sem._error_snippet(_Resp("")) != "empty-body":  # type: ignore
-        print("[TEST FAIL] snippet empty body", flush=True)
-        failed += 1
-    # reason со сниппетом доходит до warning-лога роутера (стаб classify).
-    model = SEMANTIC_MODEL
-    orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
-    orig_o = model._onnx
-    # ONNX глушим: тесты роутера проверяют цепочку qwen->gigachat,
-    # живой ONNX в образе иначе перехватит explain первым (он primary).
-    records: list[str] = []
-
-    class _Cap(_logging.Handler):
-        def emit(self, record: _logging.LogRecord) -> None:
-            records.append(record.getMessage())
-
-    cap = _Cap()
-    slog = _logging.getLogger("safemail.classify.semantic")
-    old_level = slog.level
-    slog.addHandler(cap)
-    slog.setLevel(_logging.DEBUG)
-
-    class _Fake:
-        available = True
-
-        def __init__(self, error: Exception | None = None) -> None:
-            self._error = error
-
-        def classify(self, text: str) -> tuple[str, float]:
-            assert self._error is not None
-            raise self._error
-
-    try:
-        model.loaded = True
-        model._onnx = _Fake(error=_sem.ProviderError("off"))  # type: ignore
-        model._onnx.available = False
-        model._qwen = _Fake(error=_sem.ProviderError(  # type: ignore
-            "http_403:Access denied for region | x-request-id=req-1"))
-        model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
-        records.clear()
-        model.explain("тестовое письмо")
-        if not any("qwen fallback" in m and "http_403:Access denied for region" in m
-                   and "x-request-id=req-1" in m for m in records):
-            print(f"[TEST FAIL] snippet log missing: {records}", flush=True)
-            failed += 1
-    finally:
-        model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
-        model._onnx = orig_o  # type: ignore
-        slog.removeHandler(cap)
-        slog.setLevel(old_level)
-    if not failed:
-        print("[SNIPPET TEST] тело 403 в логе, обрезка и request-id в порядке", flush=True)
+        print("[ROUTER TEST] onnx->gigachat fallback + логи в порядке", flush=True)
     return failed
 
 
@@ -741,7 +655,7 @@ def build_semantic_comment(available: bool, hei_category: str, strong_heu: bool,
                            nearest: str | None, vetoed: bool = False) -> str:
     """Человекочитаемый итог SLM для шторки /admin. Всегда одна строка,
     категории — по-русски, ниже порога — честно «не повлияло», а не «видит».
-    (Бэкенд — GigaChat, но модель отвечает от лица SLM, поэтому подпись та же.)"""
+    (Модель отвечает от лица SLM независимо от провайдера — ONNX или GigaChat.)"""
     if not available:
         return "SLM недоступна — вердикт по эвристике (fallback)."
     if vetoed:
@@ -772,7 +686,7 @@ def run_semantic_comment_tests() -> int:
         return 1
     failed = 0
     # 1. Парафраз пойман при NONE эвристики → «поймала парафраз» (эталон опционален:
-    # у GigaChat его нет, у ONNX был — формат держит оба варианта).
+    # ни ONNX, ни GigaChat его сейчас не возвращают — формат держит оба варианта).
     caught = build_semantic_comment(True, "NONE", False, True, "TERRORISM", 0.83, 0.2, None)
     if "поймала парафраз" not in caught or "\n" in caught or not caught.startswith("SLM"):
         print(f"[SEMANTIC COMMENT FAIL] caught: {caught!r}", flush=True)
@@ -882,7 +796,7 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # GigaChat-провайдер инициализируется БЕЗ сетевых вызовов (сеть — только
+    # Провайдеры инициализируются БЕЗ сетевых вызовов (сеть — только
     # в explain/predict), затем обычные startup-тесты.
     SEMANTIC_MODEL.load()
     run_startup_tests()

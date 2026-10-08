@@ -53,8 +53,7 @@ ROUTE_OTHER=infosec@mysec.ru
 
 JWT_SECRET=<openssl rand -base64 48>       # обязательно сменить
 APP_ADMIN_PASSWORD=<стойкий пароль>        # обязательно сменить
-OPENROUTER_API_KEY=<ключ>                  # семантика classify (primary Qwen); без него — только GigaChat
-GIGACHAT_API_KEY=<ключ>                    # fallback семантики; без обоих ключей — rule-based fallback
+GIGACHAT_API_KEY=<ключ>                    # fallback семантики; без него — только ONNX/rule-based fallback
 
 BACKEND_URL=http://gateway:8080
 NEXT_PUBLIC_MAIL_DOMAIN=mysec.ru   # = MAIL_DOMAIN (compose подставит сам, но пусть не врёт)
