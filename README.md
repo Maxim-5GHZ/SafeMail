@@ -86,10 +86,14 @@
    пайплайна) на адреса правила категории → `REROUTED`. При недоступности ML —
    fallback, SMTP-сессия не страдает (тяжёлое — в поллере).
 
-**SLM**: лимит 4 ГБ RAM; `rubert-tiny2` (ONNX, 116 МБ, CPU, ~220 МБ RAM) —
-веса запечены в docker-образ (multi-stage: torch только на стадии экспорта),
-стартап-тесты `10/10` парафраз; `fuse_verdict` (эвристика главная, пороги
-`0.65/0.05`). Сборке нужен интернет (HuggingFace на stage 1).
+**SLM**: вместо локальной модели — внешний GigaChat (`ml-classify/app/semantic.py`,
+ключ только в `.env`, без ключа/сети — rule-based fallback, fail-closed).
+Промпт просит `NONE` «с низкой уверенностью», поэтому raw у нормы ~0.05 и в порогах
+не участвует. `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
+семантика ловит парафразы при `NONE` (`0.65/0.05`, флаг `semantic:<cat>:<score>`);
+слабая эвристика (`<0.75`, без stopword/profanity) гасится разборчивым `NONE`
+семантики (none `≥0.85`, флаг `semantic-veto:<cat>:<score>` — одиночный бытовой
+маркер вроде «хлора» в учебном контексте не уходит в карантин).
 
 ## Принятые решения (суть)
 
@@ -101,6 +105,15 @@
 - Hibernate 6: claim/reset очереди — только native `CAST('X' AS message_status)`, bulk-HQL с enum запрещён.
 - Яндекс-спеллер шлёт наружу первые 20 слов текста — для прода с ПДн это вопрос 152-ФЗ (флаг отключения запланирован, по умолчанию включён).
 - Прод: overlay `docker-compose.prod.yml` (25/587 наружу, standalone-фронт, MailHog только по `--profile debug`), TLS через nginx, серты самоподписью (`gen-certs.sh`, в репо не коммитятся).
+- **Домен только из env**: `MAIL_DOMAIN` обязателен (без него gateway fail-fast;
+  дефолта-литерала нет ни в коде, ни в compose — пример живёт только в
+  `.env.example`). Сид при первом старте, дальше рантайм — из БД (`system_settings`).
+  Смена через `PUT /admin/settings` в той же транзакции пересаживает внутренние
+  адреса (`threat_routing_rules` + `users.email`, тот же local-part; внешние и
+  история — никогда; коллизия — пропуск с отчётом `skippedUsers[]`). Сиды `V1`
+  чинит при старте `RoutingRuleSeeder` (цель — `ROUTE_*` из env, иначе
+  `infosec@<primary>`; ручные правки не трогает). Фронт показывает живой домен
+  из `GET /public/config`, запечённый `NEXT_PUBLIC_*` — только фолбэк.
 
 ## Запуск (локально)
 
@@ -109,6 +122,8 @@ cp .env.example .env
 docker compose up -d --build
 ./e2e_test.sh   # 13 сквозных сценариев: register → PDF → DELIVERED → SMTP-угроза → REROUTED
 ```
+То же через `Makefile` (`make help`): `make up`, `make test`, `make e2e`,
+`make prod-debug`, `make no-hardcode` (контроль отсутствия захардкоженного домена).
 
 Фронт: `http://localhost:3008` (`/login`, `/inbox`, `/admin`), MailHog-веб `:8025`.
 MVP-админ: `admin@<MAIL_DOMAIN>` / `APP_ADMIN_PASSWORD` (дефолт `admin` — сменить в проде).
@@ -132,9 +147,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile debug 
 ## Проверки перед демо
 
 ```bash
-cd gateway-java && mvn test                                        # 60 тестов, без БД
+cd gateway-java && mvn test                                        # 82 теста, без БД
 cd frontend && npm run typecheck && npm run lint && npm run build  # чисто
-python3 -c "import sys; sys.path.insert(0,'ml-classify'); from app.main import run_startup_tests; run_startup_tests()"
+make test-py   # стартап-тесты трёх ML-сервисов (или make test = всё сразу)
 ```
 
 ## Структура
@@ -144,9 +159,10 @@ gateway-java/   Spring Boot: smtp/, service/ (InboundPipelineService, MailRoutin
                 MessageService, AuthService), controller/, security/, domain/, repository/
 ml-parser/      FastAPI :8001 — parse-extract
 ml-enrich/      FastAPI :8002 — normalize-enrich
-ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + SLM rubert-tiny2 в образе)
+ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + GigaChat + semantic-veto)
 frontend/       Next.js 14: app/(login,inbox,admin), lib/ (api, labels, auth), components/
 nginx/          TLS-терминация + gen-certs.sh
+Makefile        стенды dev/prod, проверки, e2e, контроль хардкода (`make help`)
 docs/PROD.md    приём почты из интернета (MX/порт 25/окружение)
 e2e_test.sh     сквозной прогон сценариев А+Б
 ```
