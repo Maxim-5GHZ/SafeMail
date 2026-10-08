@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import ru.security.gateway.domain.SystemSetting;
 import ru.security.gateway.domain.User;
 import ru.security.gateway.repository.UserRepository;
 
@@ -17,16 +18,23 @@ import ru.security.gateway.repository.UserRepository;
 class AdminBootstrapTest {
   @Mock UserRepository users;
   @Mock PasswordEncoder encoder;
+  @Mock SystemSettingService systemSettingService;
+
+  private AdminBootstrap bootstrap() {
+    lenient().when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("corp-sec.ru").allowedDomains(new String[]{"corp-sec.ru"})
+        .relayEnabled(false).build());
+    AdminBootstrap b = new AdminBootstrap(users, encoder, systemSettingService);
+    ReflectionTestUtils.setField(b, "adminPassword", "admin");
+    return b;
+  }
 
   @Test
   void createsAdminWhenAbsent() {
     when(users.findByEmail("admin@corp-sec.ru")).thenReturn(Optional.empty());
     when(users.findByUsername("admin")).thenReturn(Optional.empty());
     when(encoder.encode("admin")).thenReturn("h");
-    AdminBootstrap b = new AdminBootstrap(users, encoder);
-    ReflectionTestUtils.setField(b, "mailDomain", "corp-sec.ru");
-    ReflectionTestUtils.setField(b, "adminPassword", "admin");
-    b.run();
+    bootstrap().run();
     ArgumentCaptor<User> cap = ArgumentCaptor.forClass(User.class);
     verify(users).save(cap.capture());
     assert cap.getValue().getRole().equals("ADMIN");
@@ -35,10 +43,7 @@ class AdminBootstrapTest {
   @Test
   void skipsWhenExists() {
     when(users.findByEmail("admin@corp-sec.ru")).thenReturn(Optional.of(User.builder().build()));
-    AdminBootstrap b = new AdminBootstrap(users, encoder);
-    ReflectionTestUtils.setField(b, "mailDomain", "corp-sec.ru");
-    ReflectionTestUtils.setField(b, "adminPassword", "admin");
-    b.run();
+    bootstrap().run();
     verify(users, never()).save(any());
   }
 }

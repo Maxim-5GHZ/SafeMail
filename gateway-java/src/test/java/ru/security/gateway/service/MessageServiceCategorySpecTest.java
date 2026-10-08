@@ -29,10 +29,11 @@ class MessageServiceCategorySpecTest {
   @Mock MessageThreatAnalysisRepository analysisRepo;
   @Mock ThreatRoutingRuleRepository rulesRepo;
   @Mock DeliveryLogRepository deliveryRepo;
+  @Mock SystemSettingService systemSettingService;
 
   private MessageService svc() {
     return new MessageService(messages, parsedRepo, attachmentRepo, linkRepo, analysisRepo, rulesRepo,
-        deliveryRepo, new com.fasterxml.jackson.databind.ObjectMapper());
+        deliveryRepo, systemSettingService, new com.fasterxml.jackson.databind.ObjectMapper());
   }
 
   @Test

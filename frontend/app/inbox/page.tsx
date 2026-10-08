@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import Sidebar, { type Folder } from '@/components/Sidebar';
 import { useAuth } from '@/lib/auth';
-import { ApiError, listMessages } from '@/lib/api';
+import { ApiError, getPublicConfig, listMessages } from '@/lib/api';
 import { formatDate, snippet } from '@/lib/format';
 import { categoryLabel } from '@/lib/labels';
 import { loadRead, loadStarred, markRead, toggleStarred } from '@/lib/marks';
@@ -39,6 +39,8 @@ export default function InboxPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [starred, setStarred] = useState<string[]>([]);
+  /** Живые домены шлюза (алиасы): тост после отправки зависит от того, свой ли получатель. */
+  const [domains, setDomains] = useState<string[]>([]);
 
   useEffect(() => {
     if (ready && !token) router.replace('/login');
@@ -47,6 +49,9 @@ export default function InboxPage() {
   useEffect(() => {
     setReadIds(loadRead());
     setStarred(loadStarred());
+    getPublicConfig()
+      .then((c) => setDomains((c.allowedDomains || []).map((d) => d.toLowerCase())))
+      .catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -234,7 +239,12 @@ export default function InboxPage() {
           onSent={(to) => {
             // Своему домену: 202 — лишь приём в пайплайн, вердикт будет позже.
             // Наружу: 202 — relay принял синхронно.
-            const local = to.toLowerCase().endsWith(`@${(process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? '').toLowerCase()}`);
+            const low = to.toLowerCase();
+            const baked = (process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? '').toLowerCase();
+            const local =
+              domains.length > 0
+                ? domains.some((d) => low.endsWith(`@${d}`))
+                : baked !== '' && low.endsWith(`@${baked}`);
             flash(local ? 'Принято — идёт проверка шлюза' : 'Письмо отправлено');
             load();
             if (folder !== 'sent') setFolder('sent');

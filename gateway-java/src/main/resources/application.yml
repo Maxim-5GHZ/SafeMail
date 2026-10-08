@@ -2,6 +2,12 @@ server:
   port: 8080
 
 spring:
+  task:
+    scheduling:
+      # B: pollAndProcess возвращается сразу (раздача по пулу), но второй поток
+      # шедулера страхует от залипания, если раздача когда-то подвиснет.
+      pool:
+        size: 2
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/safemail}
     username: ${SPRING_DATASOURCE_USERNAME:safemail}

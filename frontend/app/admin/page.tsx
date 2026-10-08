@@ -7,6 +7,7 @@ import { ApiError, getAdminStats } from '@/lib/api';
 import type { AdminStats } from '@/lib/types';
 import Dashboard from './Dashboard';
 import QuarantineTab from './QuarantineTab';
+import DomainSettings from './DomainSettings';
 import Stopwords from './Stopwords';
 import OfficerAddresses from './OfficerAddresses';
 import { LogoMark } from '@/components/Logo';
@@ -148,6 +149,7 @@ export default function AdminPage() {
 
         {tab === 'settings' && (
           <div className="flex flex-col gap-3">
+            <DomainSettings token={token} />
             <Stopwords token={token} />
             <OfficerAddresses token={token} />
           </div>

@@ -1,7 +1,6 @@
 package ru.security.gateway.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,14 +16,12 @@ public class AuthService {
   private final UserRepository users;
   private final PasswordEncoder encoder;
   private final JwtService jwt;
-
-  @Value("${mail.domain:corp-sec.ru}")
-  private String mailDomain;
+  private final SystemSettingService systemSettingService;
 
   @Transactional
   public String register(RegisterRequest req) {
     String username = req.getUsername().toLowerCase().trim();
-    String email = username + "@" + mailDomain.toLowerCase();
+    String email = username + "@" + systemSettingService.getSettings().getPrimaryDomain().toLowerCase();
     if (users.findByEmail(email).isPresent() || users.findByUsername(username).isPresent()) {
       throw new IllegalArgumentException("Пользователь уже существует: " + email);
     }

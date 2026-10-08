@@ -10,7 +10,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
+import ru.security.gateway.domain.SystemSetting;
 import ru.security.gateway.domain.User;
 import ru.security.gateway.dto.LoginRequest;
 import ru.security.gateway.dto.RegisterRequest;
@@ -22,11 +22,13 @@ class AuthServiceTest {
   @Mock UserRepository users;
   @Mock PasswordEncoder encoder;
   @Mock JwtService jwt;
+  @Mock SystemSettingService systemSettingService;
 
   private AuthService svc() {
-    AuthService s = new AuthService(users, encoder, jwt);
-    ReflectionTestUtils.setField(s, "mailDomain", "corp-sec.ru");
-    return s;
+    lenient().when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("corp-sec.ru").allowedDomains(new String[]{"corp-sec.ru"})
+        .relayEnabled(false).build());
+    return new AuthService(users, encoder, jwt, systemSettingService);
   }
 
   @Test

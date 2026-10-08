@@ -16,11 +16,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 import ru.security.gateway.domain.DeliveryLog;
 import ru.security.gateway.domain.Message;
 import ru.security.gateway.domain.MessageStatus;
+import ru.security.gateway.domain.SystemSetting;
 import ru.security.gateway.domain.MessageThreatAnalysis;
 import ru.security.gateway.domain.ThreatCategory;
 import ru.security.gateway.domain.ThreatRoutingRule;
@@ -43,6 +43,7 @@ class ForwardToOfficersTest {
   @Mock JavaMailSender mailSender;
   @Mock RestTemplate restTemplate;
   @Mock org.springframework.beans.factory.ObjectProvider<InboundPipelineService> self;
+  @Mock SystemSettingService systemSettingService;
 
   InboundPipelineService svc;
   Message msg;
@@ -50,8 +51,9 @@ class ForwardToOfficersTest {
   @BeforeEach
   void setUp() {
     svc = new InboundPipelineService(messages, parsedRepo, attachmentRepo, linkRepo,
-        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self);
-    ReflectionTestUtils.setField(svc, "mailDomain", "test.local");
+        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self,
+        systemSettingService);
+    lenient().when(systemSettingService.getSettings()).thenReturn(relayOn());
     byte[] raw = ("From: a@test.local\r\nTo: b@test.local\r\nSubject: hi\r\n"
         + "Content-Type: text/plain; charset=utf-8\r\n\r\nhello").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     msg = Message.builder().senderEmail("a@test.local").recipientEmail("b@test.local")
@@ -158,5 +160,29 @@ class ForwardToOfficersTest {
     verify(deliveryRepo).save(log.capture());
     assertEquals("FORWARDED_TO_SECURITY", log.getValue().getActionTaken());
     assertFalse(log.getValue().isSuccess());
+  }
+
+  @Test
+  void relayDisabledForwardsLocallyWithoutSmtp() {
+    when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(false).relayHost("localhost").relayPort(1025).build());
+    stubRule();
+
+    List<String> to = svc.forwardToOfficers(msg.getId(), null, "admin@test.local", null);
+
+    assertEquals(List.of("soc@test.local"), to);
+    assertEquals(MessageStatus.FORWARDED, msg.getStatus());
+    verify(mailSender, never()).send(any(MimeMessage.class));
+    ArgumentCaptor<DeliveryLog> log = ArgumentCaptor.forClass(DeliveryLog.class);
+    verify(deliveryRepo).save(log.capture());
+    assertEquals("FORWARDED_TO_SECURITY", log.getValue().getActionTaken());
+    assertTrue(log.getValue().isSuccess());
+  }
+
+  private static SystemSetting relayOn() {
+    return SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(true).relayHost("localhost").relayPort(1025).build();
   }
 }

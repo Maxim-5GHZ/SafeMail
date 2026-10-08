@@ -23,16 +23,14 @@ public class AdminBootstrap implements CommandLineRunner {
 
   private final UserRepository users;
   private final PasswordEncoder encoder;
-
-  @Value("${mail.domain:corp-sec.ru}")
-  private String mailDomain;
+  private final SystemSettingService systemSettingService;
 
   @Value("${app.admin-password:admin}")
   private String adminPassword;
 
   @Override
   public void run(String... args) {
-    String email = "admin@" + mailDomain.toLowerCase();
+    String email = "admin@" + systemSettingService.getSettings().getPrimaryDomain().toLowerCase();
     if (users.findByEmail(email).isPresent() || users.findByUsername("admin").isPresent()) {
       return;
     }

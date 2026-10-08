@@ -28,10 +28,11 @@ class MessageSearchSpecTest {
   @Mock MessageThreatAnalysisRepository analysisRepo;
   @Mock ThreatRoutingRuleRepository rulesRepo;
   @Mock DeliveryLogRepository deliveryRepo;
+  @Mock SystemSettingService systemSettingService;
 
   private MessageService svc() {
     return new MessageService(messages, parsedRepo, attachmentRepo, linkRepo, analysisRepo, rulesRepo,
-        deliveryRepo, new com.fasterxml.jackson.databind.ObjectMapper());
+        deliveryRepo, systemSettingService, new com.fasterxml.jackson.databind.ObjectMapper());
   }
 
   private Specification<Message> captureSpec() {
@@ -53,6 +54,27 @@ class MessageSearchSpecTest {
 
     verify(root).get("recipientEmail");
     verify(cb).like(any(), eq("%bob@corp-sec.ru%"));
+  }
+
+  @Test
+  void localRecipientMatchesAllDomainAliases() {
+    when(systemSettingService.isLocalDomain("corp-sec.ru")).thenReturn(true);
+    when(systemSettingService.getAllowedDomainsList())
+        .thenReturn(List.of("corp-sec.ru", "mail.corp-sec.ru"));
+    when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of()));
+    svc().getFilteredMessages(null, null, null, "bob@corp-sec.ru", null, null, PageRequest.of(0, 20));
+
+    Specification<Message> spec = captureSpec();
+    Root root = mock(Root.class);
+    CriteriaBuilder cb = mock(CriteriaBuilder.class);
+    spec.toPredicate(root, mock(CriteriaQuery.class), cb);
+
+    // Один ящик на все алиасы: bob@corp-sec.ru И bob@mail.corp-sec.ru, без LIKE-подстроки.
+    verify(cb, never()).like(any(Expression.class), anyString());
+    verify(cb).equal(any(), eq("bob@corp-sec.ru"));
+    verify(cb).equal(any(), eq("bob@mail.corp-sec.ru"));
+    verify(cb).or(any(Predicate[].class));
   }
 
   @Test

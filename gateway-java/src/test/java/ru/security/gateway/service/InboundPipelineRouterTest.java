@@ -23,11 +23,11 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 import ru.security.gateway.domain.DeliveryLog;
 import ru.security.gateway.domain.Message;
 import ru.security.gateway.domain.MessageStatus;
+import ru.security.gateway.domain.SystemSetting;
 import ru.security.gateway.repository.*;
 
 /**
@@ -48,6 +48,7 @@ class InboundPipelineRouterTest {
   @Mock JavaMailSender mailSender;
   @Mock RestTemplate restTemplate;
   @Mock org.springframework.beans.factory.ObjectProvider<InboundPipelineService> self;
+  @Mock SystemSettingService systemSettingService;
 
   InboundPipelineService svc;
   Message msg;
@@ -55,8 +56,11 @@ class InboundPipelineRouterTest {
   @BeforeEach
   void setUp() {
     svc = new InboundPipelineService(messages, parsedRepo, attachmentRepo, linkRepo,
-        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self);
-    ReflectionTestUtils.setField(svc, "mailDomain", "test.local");
+        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self,
+        systemSettingService);
+    lenient().when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(true).relayHost("localhost").relayPort(1025).build());
     byte[] raw = ("From: a@test.local\r\nTo: b@test.local\r\nSubject: hi\r\n"
         + "Content-Type: text/plain; charset=utf-8\r\n\r\nhello").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     msg = Message.builder().senderEmail("a@test.local").recipientEmail("b@test.local")
@@ -100,6 +104,37 @@ class InboundPipelineRouterTest {
     verify(deliveryRepo).save(cap.capture());
     assertEquals("FORWARDED_ORIGINAL", cap.getValue().getActionTaken());
     verify(mailSender).send(any(MimeMessage.class));
+  }
+
+  @Test
+  void relayDisabledStoresCleanLocally() {
+    when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(false).relayHost("localhost").relayPort(1025).build());
+    stubMl("NONE");
+    svc.processClaimed(msg.getId());
+    assertEquals(MessageStatus.DELIVERED, msg.getStatus());
+    ArgumentCaptor<DeliveryLog> cap = ArgumentCaptor.forClass(DeliveryLog.class);
+    verify(deliveryRepo).save(cap.capture());
+    assertEquals("STORED_LOCALLY", cap.getValue().getActionTaken());
+    assertTrue(cap.getValue().isSuccess());
+    verify(mailSender, never()).send(any(MimeMessage.class));
+  }
+
+  @Test
+  void relayDisabledQuarantinesLocally() {
+    when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(false).relayHost("localhost").relayPort(1025).build());
+    stubMl("MAN_MADE");
+    when(rulesRepo.findByCategory(any())).thenReturn(Optional.empty());
+    svc.processClaimed(msg.getId());
+    assertEquals(MessageStatus.REROUTED, msg.getStatus());
+    ArgumentCaptor<DeliveryLog> cap = ArgumentCaptor.forClass(DeliveryLog.class);
+    verify(deliveryRepo).save(cap.capture());
+    assertEquals("REROUTED_TO_SECURITY", cap.getValue().getActionTaken());
+    assertTrue(cap.getValue().isSuccess());
+    verify(mailSender, never()).send(any(MimeMessage.class));
   }
 
   @Test

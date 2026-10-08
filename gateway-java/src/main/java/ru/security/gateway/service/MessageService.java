@@ -4,6 +4,8 @@ import jakarta.persistence.criteria.*;
 import java.time.OffsetDateTime;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -22,7 +24,15 @@ public class MessageService {
   private final MessageThreatAnalysisRepository analysisRepo;
   private final ThreatRoutingRuleRepository rulesRepo;
   private final DeliveryLogRepository deliveryRepo;
+  private final SystemSettingService systemSettingService;
   private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+  /** C: мгновенный reprocess без ожидания 5-с полла (не в конструкторе —
+   *  тесты создают сервис вручную через new; null → старый режим PENDING). */
+  @Autowired(required = false)
+  private ObjectProvider<InboundPipelineService> pipelineProvider;
+  @Autowired(required = false)
+  private org.springframework.core.task.TaskExecutor pipelineExecutor;
 
   @Transactional(readOnly = true)
   public Page<MessageDto> getFilteredMessages(MessageStatus status, ThreatCategory category,
@@ -31,7 +41,21 @@ public class MessageService {
       List<Predicate> p = new ArrayList<>();
       if (status != null) p.add(cb.equal(root.get("status"), status));
       if (sender != null && !sender.isBlank()) p.add(cb.like(cb.lower(root.get("senderEmail")), "%" + sender.toLowerCase() + "%"));
-      if (recipient != null && !recipient.isBlank()) p.add(cb.like(cb.lower(root.get("recipientEmail")), "%" + recipient.toLowerCase() + "%"));
+      if (recipient != null && !recipient.isBlank()) {
+        int at = recipient.indexOf('@');
+        String domainPart = at > 0 ? recipient.substring(at + 1).toLowerCase() : "";
+        if (at > 0 && systemSettingService.isLocalDomain(domainPart)) {
+          // Свой домен: ищем по всем алиасам (ivan@hotcodeband.ru И ivan@mail.hotcodeband.ru —
+          // один ящик), а не подстрокой, иначе чужой домен-суффикс даст ложные совпадения.
+          String userPart = recipient.substring(0, at).toLowerCase();
+          List<Predicate> ors = systemSettingService.getAllowedDomainsList().stream()
+              .map(d -> cb.equal(cb.lower(root.get("recipientEmail")), userPart + "@" + d))
+              .toList();
+          p.add(cb.or(ors.toArray(new Predicate[0])));
+        } else {
+          p.add(cb.like(cb.lower(root.get("recipientEmail")), "%" + recipient.toLowerCase() + "%"));
+        }
+      }
       if ("inbox".equalsIgnoreCase(mailbox)) {
         // Карантин получателю не доставлялся — во Входящих его нет (тихо, без заглушек).
         // Отправленные (sent) карантин видят — отправитель должен знать о блокировке.
@@ -232,6 +256,36 @@ public class MessageService {
     Message m = messages.findById(id).orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
     m.setStatus(MessageStatus.PENDING);
     m.setProcessedAt(null);
+    // C: сразу ставим в пул после коммита — не ждём следующий 5-с полл.
+    // claim атомарный (SKIP LOCKED), двойной обработки с поллером не будет:
+    // кто первым сделал claimAsInProgress, тот и обрабатывает.
+    if (pipelineProvider == null || pipelineExecutor == null) {
+      return; // юнит-тесты без контекста: только PENDING, заберёт поллер
+    }
+    if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+      org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+          new org.springframework.transaction.support.TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              launchReprocessing(id);
+            }
+          });
+    } else {
+      launchReprocessing(id);
+    }
+  }
+
+  private void launchReprocessing(UUID id) {
+    pipelineExecutor.execute(() -> {
+      try {
+        pipelineProvider.getObject().processClaimed(id);
+      } catch (Exception e) {
+        try {
+          pipelineProvider.getObject().markFailed(id);
+        } catch (Exception ignored) {
+        }
+      }
+    });
   }
 
   @Transactional(readOnly = true)

@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -39,9 +41,13 @@ public class InboundPipelineService {
   private final JavaMailSender mailSender;
   private final RestTemplate restTemplate;
   private final ObjectProvider<InboundPipelineService> self;
+  private final SystemSettingService systemSettingService;
 
-  @Value("${mail.domain:corp-sec.ru}")
-  private String mailDomain;
+  /** B: пул параллельной обработки очереди (не в конструкторе — тесты создают
+   *  сервис вручную через new; null → синхронный fallback). */
+  @Autowired(required = false)
+  @Qualifier("pipelineExecutor")
+  private org.springframework.core.task.TaskExecutor pipelineExecutor;
 
   @Value("${ml.parser-url:http://localhost:8001}")
   private String parserUrl;
@@ -119,16 +125,27 @@ public class InboundPipelineService {
       log.warn("Poll skip (БД недоступна?): {}", e.getMessage());
       return;
     }
+    // B: batch раздаём по пулу — одно медленное письмо (внешний Yandex/GigaChat)
+    // не держит остальные 9. claim атомарный, каждое письмо — своя транзакция.
     for (UUID id : ids) {
+      if (pipelineExecutor != null) {
+        pipelineExecutor.execute(() -> processClaimedSafe(id));
+      } else {
+        processClaimedSafe(id);
+      }
+    }
+  }
+
+  /** Обёртка для асинхронного запуска: claim + обработка + markFailed при падении. */
+  void processClaimedSafe(UUID id) {
+    try {
+      self.getObject().processClaimed(id);
+    } catch (Exception e) {
+      log.error("Pipeline failed for {}", id, e);
       try {
-        self.getObject().processClaimed(id);
-      } catch (Exception e) {
-        log.error("Pipeline failed for {}", id, e);
-        try {
-          self.getObject().markFailed(id);
-        } catch (Exception inner) {
-          log.error("markFailed failed for {}", id, inner);
-        }
+        self.getObject().markFailed(id);
+      } catch (Exception inner) {
+        log.error("markFailed failed for {}", id, inner);
       }
     }
   }
@@ -308,7 +325,19 @@ public class InboundPipelineService {
     messages.save(msg);
   }
 
+  /**
+   * Чистая доставка. SafeMail — конечный ящик: при выключенном реле (дефолт)
+   * письмо никуда не пересылается, а остаётся во «Входящих» веб-интерфейса.
+   * Поэтому Gmail-входящее больше не падает в FAILED из-за отсутствия mailhog.
+   */
   private void deliverOriginal(Message msg) {
+    if (!systemSettingService.getSettings().isRelayEnabled()) {
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("STORED_LOCALLY")
+          .destinationRecipients(new String[]{msg.getRecipientEmail()})
+          .smtpResponse("Сохранено локально в ящик SafeMail (релей отключён)").success(true).build());
+      return;
+    }
     try {
       sendOriginalBytes(msg);
       deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
@@ -347,6 +376,13 @@ public class InboundPipelineService {
     }
     String note = "released by " + adminEmail
         + (reason == null || reason.isBlank() ? "" : ": " + reason.strip());
+    if (!systemSettingService.getSettings().isRelayEnabled()) {
+      // Локальный ящик: письмо уже в базе, получатель увидит его во «Входящих».
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("RELEASED_BY_ADMIN")
+          .destinationRecipients(new String[]{msg.getRecipientEmail()})
+          .smtpResponse(note + " | локально, без SMTP-релея").success(true).build());
+    } else {
     try {
       sendOriginalBytes(msg);
       deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
@@ -359,6 +395,7 @@ public class InboundPipelineService {
           .destinationRecipients(new String[]{msg.getRecipientEmail()})
           .smtpResponse(note + " | failed: " + e.getMessage()).success(false).build());
       throw new RuntimeException(e);
+    }
     }
     msg.setStatus(MessageStatus.DELIVERED);
     msg.setProcessedAt(OffsetDateTime.now());
@@ -394,10 +431,17 @@ public class InboundPipelineService {
       }
     }
     if (dest.isEmpty()) {
-      dest.add("infosec@" + mailDomain);
+      dest.add("infosec@" + systemSettingService.getSettings().getPrimaryDomain());
     }
     String note = "forwarded by " + adminEmail
         + (reason == null || reason.isBlank() ? "" : ": " + reason.strip());
+    if (!systemSettingService.getSettings().isRelayEnabled()) {
+      // Без релея письмо безопасникам по SMTP не уходит — офицеры читают FORWARDED-ящик в /admin.
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("FORWARDED_TO_SECURITY")
+          .destinationRecipients(dest.toArray(new String[0]))
+          .smtpResponse(note + " | локально, без SMTP-релея").success(true).build());
+    } else {
     try {
       MimeMessage fwd = new MimeMessage(Session.getDefaultInstance(new Properties()),
           new ByteArrayInputStream(msg.getRawContent()));
@@ -413,6 +457,7 @@ public class InboundPipelineService {
           .destinationRecipients(dest.toArray(new String[0]))
           .smtpResponse(note + " | failed: " + e.getMessage()).success(false).build());
       throw new RuntimeException(e);
+    }
     }
     msg.setStatus(MessageStatus.FORWARDED);
     msg.setProcessedAt(OffsetDateTime.now());
@@ -434,11 +479,18 @@ public class InboundPipelineService {
   private void reroute(Message msg, ThreatCategory cat) {
     String[] dest = rulesRepo.findByCategory(cat)
         .map(ThreatRoutingRule::getDestinationEmails)
-        .orElseGet(() -> new String[]{"infosec@" + mailDomain});
+        .orElseGet(() -> new String[]{"infosec@" + systemSettingService.getSettings().getPrimaryDomain()});
     MessageParsedData pd = parsedRepo.findByMessageId(msg.getId()).orElse(null);
     MessageThreatAnalysis ta = analysisRepo.findByMessageId(msg.getId()).orElse(null);
     List<MessageLink> links = linkRepo.findByMessageId(msg.getId());
     String body = buildQuarantineBody(msg, cat, pd, ta, links);
+    if (!systemSettingService.getSettings().isRelayEnabled()) {
+      // Карантин живёт в базе (/admin): SMTP-копия безопасникам не уходит.
+      deliveryRepo.save(DeliveryLog.builder().messageId(msg.getId())
+          .actionTaken("REROUTED_TO_SECURITY")
+          .destinationRecipients(dest).smtpResponse("rerouted:" + cat + " | локально, без SMTP-релея").success(true).build());
+      return;
+    }
     try {
       for (String d : dest) {
         var out = mailSender.createMimeMessage();

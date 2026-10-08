@@ -18,11 +18,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 import ru.security.gateway.domain.DeliveryLog;
 import ru.security.gateway.domain.Message;
 import ru.security.gateway.domain.MessageStatus;
+import ru.security.gateway.domain.SystemSetting;
 import ru.security.gateway.repository.*;
 
 /**
@@ -42,6 +42,7 @@ class ReleaseFromQuarantineTest {
   @Mock JavaMailSender mailSender;
   @Mock RestTemplate restTemplate;
   @Mock org.springframework.beans.factory.ObjectProvider<InboundPipelineService> self;
+  @Mock SystemSettingService systemSettingService;
 
   InboundPipelineService svc;
   Message msg;
@@ -49,8 +50,9 @@ class ReleaseFromQuarantineTest {
   @BeforeEach
   void setUp() {
     svc = new InboundPipelineService(messages, parsedRepo, attachmentRepo, linkRepo,
-        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self);
-    ReflectionTestUtils.setField(svc, "mailDomain", "test.local");
+        analysisRepo, rulesRepo, stopwordRepo, deliveryRepo, mailSender, restTemplate, self,
+        systemSettingService);
+    lenient().when(systemSettingService.getSettings()).thenReturn(relayOn());
     byte[] raw = ("From: a@test.local\r\nTo: b@test.local\r\nSubject: hi\r\n"
         + "Content-Type: text/plain; charset=utf-8\r\n\r\nhello").getBytes(java.nio.charset.StandardCharsets.UTF_8);
     msg = Message.builder().senderEmail("a@test.local").recipientEmail("b@test.local")
@@ -129,5 +131,28 @@ class ReleaseFromQuarantineTest {
     verify(deliveryRepo).save(log.capture());
     assertEquals("RELEASED_BY_ADMIN", log.getValue().getActionTaken());
     assertFalse(log.getValue().isSuccess());
+  }
+
+  @Test
+  void relayDisabledReleasesLocallyWithoutSmtp() {
+    when(systemSettingService.getSettings()).thenReturn(SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(false).relayHost("localhost").relayPort(1025).build());
+    when(messages.findById(any(UUID.class))).thenReturn(Optional.of(msg));
+
+    svc.releaseFromQuarantine(msg.getId(), "admin@test.local", "проверили");
+
+    assertEquals(MessageStatus.DELIVERED, msg.getStatus());
+    verify(mailSender, never()).send(any(MimeMessage.class));
+    ArgumentCaptor<DeliveryLog> log = ArgumentCaptor.forClass(DeliveryLog.class);
+    verify(deliveryRepo).save(log.capture());
+    assertEquals("RELEASED_BY_ADMIN", log.getValue().getActionTaken());
+    assertTrue(log.getValue().isSuccess());
+  }
+
+  private static SystemSetting relayOn() {
+    return SystemSetting.builder()
+        .id(1).primaryDomain("test.local").allowedDomains(new String[]{"test.local"})
+        .relayEnabled(true).relayHost("localhost").relayPort(1025).build();
   }
 }

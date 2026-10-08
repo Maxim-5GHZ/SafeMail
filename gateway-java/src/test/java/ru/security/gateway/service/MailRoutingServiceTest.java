@@ -14,22 +14,31 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /** Hairpin без БД: свой домен — в пайплайн, чужой — сразу в relay. */
 @ExtendWith(MockitoExtension.class)
 class MailRoutingServiceTest {
   @Mock JavaMailSender mailSender;
   @Mock InboundPipelineService pipeline;
+  @Mock SystemSettingService systemSettingService;
 
   MailRoutingService svc;
 
   @BeforeEach
   void setUp() {
-    svc = new MailRoutingService(mailSender, pipeline);
-    ReflectionTestUtils.setField(svc, "localDomain", "corp-sec.ru");
+    svc = new MailRoutingService(mailSender, pipeline, systemSettingService);
+    lenient().when(systemSettingService.isLocalDomain(any()))
+        .thenAnswer(inv -> "corp-sec.ru".equalsIgnoreCase(inv.getArgument(0)));
     lenient().when(mailSender.createMimeMessage())
         .thenAnswer(inv -> new MimeMessage(Session.getInstance(new Properties())));
+  }
+
+  @Test
+  void aliasDomainAlsoGoesToPipeline() {
+    lenient().when(systemSettingService.isLocalDomain("mail.corp-sec.ru")).thenReturn(true);
+    svc.sendEmail("a@corp-sec.ru", "b@mail.corp-sec.ru", "s", "body", null);
+    verify(pipeline).processIncomingStream(eq("a@corp-sec.ru"), eq("b@mail.corp-sec.ru"), any());
+    verify(mailSender, never()).send(any(MimeMessage.class));
   }
 
   @Test

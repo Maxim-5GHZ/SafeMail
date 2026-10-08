@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
-import { ApiError } from '@/lib/api';
+import { ApiError, getPublicConfig } from '@/lib/api';
 import { LogoFull } from '@/components/Logo';
 
-const MAIL_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? 'corp-sec.ru';
+const FALLBACK_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? 'corp-sec.ru';
 
 export default function LoginPage() {
   const { ready, token, login, register } = useAuth();
@@ -17,10 +17,24 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Живой домен с бэкенда; запечённый NEXT_PUBLIC_* — только фолбэк до первого ответа. */
+  const [domain, setDomain] = useState(FALLBACK_DOMAIN);
 
   useEffect(() => {
     if (ready && token) router.replace(homeForRole(roleOf(token)));
   }, [ready, token, router]);
+
+  useEffect(() => {
+    let alive = true;
+    getPublicConfig()
+      .then((c) => {
+        if (alive && c.primaryDomain) setDomain(c.primaryDomain);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,7 +96,7 @@ export default function LoginPage() {
               className="px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-300"
             />
             <div className="text-xs text-gray-500">
-              Ящик будет создан автоматически: <b>{username || 'логин'}@{MAIL_DOMAIN}</b>
+              Ящик будет создан автоматически: <b>{username || 'логин'}@{domain}</b>
             </div>
           </>
         )}

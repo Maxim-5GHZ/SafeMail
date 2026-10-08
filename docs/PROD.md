@@ -27,13 +27,17 @@ AI-пайплайн (`GatewayConfig`: 2 инстанса — MX-порт и subm
 ## 3. Окружение
 
 ```env
-MAIL_DOMAIN=mysec.ru
-MAIL_RELAY_HOST=smtp.your-provider.ru   # реальный relay для чистой почты
+MAIL_DOMAIN=mysec.ru   # только сид при ПЕРВОМ старте; дальше домен меняется в /admin → Настройки
+MAIL_RELAY_HOST=smtp.your-provider.ru   # нужен, только если в /admin включён SMTP-релей
 MAIL_RELAY_PORT=587
 JWT_SECRET=<openssl rand -base64 48>    # обязательно сменить
 APP_ADMIN_PASSWORD=<стойкий пароль>     # обязательно сменить
 POSTGRES_PASSWORD=<стойкий пароль>      # обязательно сменить
 ```
+
+Входящая почта из интернета релея НЕ требует: при выключенном реле (дефолт)
+чистые письма сразу падают во «Входящие» фронта (`STORED_LOCALLY`),
+угрозы — в карантин `/admin` (тоже локально, без SMTP-копий).
 
 Серты nginx: самоподпись из `nginx/gen-certs.sh` — только для демо;
 в проде положите в `nginx/certs/` настоящий сертификат (или certbot).
@@ -50,5 +54,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 2. Цепочка: Google → `MX mysec.ru` → ваш IP `:25` → SubEthaSMTP →
    `InboundPipelineService` (сырой EML в Postgres) → поллер → парсер/спеллер/SLM →
    письмо во входящих фронта или карантин в `/admin`.
-3. Если до защиты мало времени или хостер не открыл 25-й порт — не рискуйте,
-   демьте на локальном стенде с MailHog (`docker compose up -d`, relay `mailhog:1025`).
+3. Домены и алиасы (`mysec.ru` + `mail.mysec.ru`) правятся вживую:
+   `/admin` → Настройки → «Почтовый домен и приём писем» (без пересборки).
+   Релей для входящей не нужен — держите его выключенным.
+4. Если до защиты мало времени или хостер не открыл 25-й порт — не рискуйте,
+   демьте на локальном стенде (`docker compose up -d`, Gmail не нужен).

@@ -179,8 +179,7 @@ export function updateRule(
 
 export function listStopwords(token: string): Promise<ThreatStopword[]> {
   return req<ThreatStopword[]>('/v1/admin/stopwords', token);
-}
-export function createStopword(token: string, pattern: string, category: ThreatCategory): Promise<ThreatStopword> {
+}export function createStopword(token: string, pattern: string, category: ThreatCategory): Promise<ThreatStopword> {
   return req<ThreatStopword>('/v1/admin/stopwords', token, {
     method: 'POST',
     body: { pattern, category },
@@ -197,4 +196,33 @@ export function updateStopword(
 
 export function deleteStopword(token: string, id: number): Promise<void> {
   return req<void>(`/v1/admin/stopwords/${id}`, token, { method: 'DELETE' });
+}
+
+export interface PublicConfig {
+  primaryDomain: string;
+  allowedDomains: string[];
+}
+
+/** Живой домен с бэкенда (без токена) — вместо запечённого NEXT_PUBLIC_MAIL_DOMAIN. */
+export function getPublicConfig(signal?: AbortSignal): Promise<PublicConfig> {
+  return req<PublicConfig>('/v1/public/config', null, signal ? { signal } : undefined);
+}
+
+export interface SystemSettingsDto {
+  primaryDomain: string;
+  allowedDomains: string[];
+  relayEnabled: boolean;
+  relayHost?: string;
+  relayPort?: number;
+}
+
+export function getSystemSettings(token: string): Promise<SystemSettingsDto> {
+  return req<SystemSettingsDto>('/v1/admin/settings', token);
+}
+
+export function updateSystemSettings(token: string, data: SystemSettingsDto): Promise<SystemSettingsDto> {
+  return req<SystemSettingsDto>('/v1/admin/settings', token, {
+    method: 'PUT',
+    body: data as unknown as Record<string, unknown>,
+  });
 }

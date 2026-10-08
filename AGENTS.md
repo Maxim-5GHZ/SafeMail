@@ -40,10 +40,15 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
 - Очередь без Kafka: `status='PENDING'` + `FOR UPDATE SKIP LOCKED` +
   атомарный claim `claimAsInProgress → IN_PROGRESS` (по одному письму в своей
   транзакции через `processClaimed`), зависшие `IN_PROGRESS` старше 30 мин
-  возвращаются в `PENDING` (`resetStale`). Поллинг каждые 5 с.
+  возвращаются в `PENDING` (`resetStale`). Поллинг каждые 5 с, batch до 10
+  раздаётся по пулу `pipelineExecutor` (4/8, `GatewayConfig`) — каждое письмо
+  в своей транзакции, claim атомарный, head-of-line blocking нет.
+  `triggerReprocessing` после коммита сразу ставит письмо в тот же пул
+  (`afterCommit → processClaimed`), не ждёт следующего полла.
   Один `RCPT TO` = одна строка `messages` (мультиполучатели размножаются
   в `InboundMessageHandlerFactory`).
-- Hairpin (`MailRoutingService`): получатель на `MAIL_DOMAIN` → внутрь
+- Hairpin (`MailRoutingService`): получатель на своём домене
+  (`SystemSettingService.isLocalDomain`, основной + алиасы) → внутрь
   пайплайна; чужой домен → сразу в relay без ИИ.
 - SLM-лимит: **4 ГБ RAM**. `ml-classify`: `rubert-tiny2` (ONNX, 116 МБ, CPU,
   ~222 МБ RAM), веса запечены в образ (multi-stage Dockerfile: stage 1 экспортирует
@@ -73,7 +78,7 @@ src/main/java/ru/security/gateway/
     InboundPipelineService.java  # receiveRaw + pollAndProcess + processOne + router
     MailRoutingService.java      # sendEmail с hairpin
     MessageService.java          # фильтры/пагинация/деталка/reprocess/правила
-    AuthService.java             # register username→email@MAIL_DOMAIN, BCrypt+JWT
+    AuthService.java             # register username→email@primaryDomain (настройки), BCrypt+JWT
   controller/                    # Auth, MessageGateway, RoutingRule, GlobalExceptionHandler
   security/                      # JwtService, JwtAuthFilter, SecurityConfig
 ```
@@ -182,6 +187,16 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 (письмо уходит из карантина в отдельный фильтр), в `delivery_logs` — `FORWARDED_TO_SECURITY`.
 Стоп-слова: `GET/POST /api/v1/admin/stopwords`, `PUT/DELETE /api/v1/admin/stopwords/{id}`
 (только `ADMIN`; `pattern 2..200`, `category`, `active`).
+Настройки почты: `GET /api/v1/public/config` (без авторизации: `primaryDomain`,
+`allowedDomains` — живой домен для форм), `GET/PUT /api/v1/admin/settings`
+(только `ADMIN`; `primaryDomain` обязателен, `allowedDomains[] ≤20`,
+`relayPort 1..65535`; домены валидируются `SystemSettingService.normalizeDomain`).
+`MAIL_DOMAIN` в env — только сид при первом старте (`V8`, `system_settings` id=1
++ авто-алиас `mail.X ↔ X`); рантайм — из БД. Релей выключен (дефолт):
+чистое письмо не пересылается, а хранится локально (`STORED_LOCALLY`, статус
+`DELIVERED`); карантин/forward/release — тоже без SMTP (только аудит
+`delivery_logs`). Фильтр `?recipient=` на своём домене ищет по всем алиасам
+(`OR` точных совпадений), чужой — как раньше подстрокой.
 Фронт `/admin`: KPI-карточки + чипы категорий
 (клик — фильтр таблицы) + div-бары динамики + селектор 7/14/30д, polling 10с.
 Деталка `GET /messages/{id}` отдаёт инженерной шторке: `cleanText`,
@@ -196,10 +211,13 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 
 Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
 
-- `/login` — регистрация `username+password → username@NEXT_PUBLIC_MAIL_DOMAIN`,
+- `/login` — регистрация `username+password → username@<primaryDomain из /public/config>`,
   вход по email; JWT в `localStorage` (MVP), роль из payload, 401 → `/login`;
   после входа и с корня `/` роль `ADMIN` ведётся сразу в `/admin` (SOC),
   остальные — в `/inbox` (`homeForRole/roleOf/storedRole` в `lib/auth`).
+  Показываемый домен — живой (`GET /public/config`), запечённый
+  `NEXT_PUBLIC_MAIL_DOMAIN` — только фолбэк; тост в `/inbox` сверяет получателя
+  с `allowedDomains` (алиасы), а не с одной строкой env.
 - `/inbox` — Gmail-стиль: топбар с поиском (`?query=`, debounce 400мс),
   сайдбар (Входящие=`?recipient=я&mailbox=inbox` / Отправленные=`?sender=я&mailbox=sent`),
   компактные строки (жирность=непрочитано из `localStorage`, SVG-звезда тоже там, красная точка=угроза,
@@ -239,7 +257,9 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   (`byCategoryRerouted`/`byCategoryForwarded`) + таблица + пагинация, polling 10с) /
    `Обзор` (KPI: всего/доставлено/карантин/отправлено в ИБ/ошибки/очередь + график
   с осью/легендой/min-height сегментов, скелетоны вместо нулей, селектор 7/14/30д) /
-   `Настройки` (стоп-слова CRUD + «Адреса ИБ» `GET/PUT /routing-rules`).
+   `Настройки` (стоп-слова CRUD + «Адреса ИБ» `GET/PUT /routing-rules`
+   + «Почтовый домен и приём писем» `GET/PUT /admin/settings`: основной домен,
+   алиасы, вкл/выкл релея — применяется сразу, без пересборки).
   Тон `/admin` — нейтральный SOC: цвет только маркером серьёзности
   (`severityOf/severityDotClass` в `labels.ts`: красный/оранжевый/янтарный/серый),
   фиолетовый акцент сохранён; сводка письма — панель с полосой severity,
@@ -290,8 +310,10 @@ BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
 (`nginx/certs/` в `.gitignore`, в репо не коммитить).
 `frontend` бежит под `user: "${UID:-1000}:${GID:-1000}"` — иначе root-писанина
 dev-сервера в `./frontend/.next` ломает хостовые `npm run build/typecheck` (EACCES).
-`mailhog` (:1025 SMTP, :8025 веб) — MVP-relay: сюда уходят чистые письма
-и карантин (`MAIL_RELAY_HOST=mailhog`). Без relay доставка падает в `FAILED`.
+`mailhog` (:1025 SMTP, :8025 веб) — MVP-relay для исходящих наружу
+(`MAIL_RELAY_HOST=mailhog`). Входящие из интернета релея НЕ требуют:
+при выключенном реле (дефолт) чистые письма хранятся локально
+(`STORED_LOCALLY`, статус `DELIVERED`), карантин — тоже локально.
 Прод — overlay `docker-compose.prod.yml`
 (`-f docker-compose.yml -f docker-compose.prod.yml up -d --build`):
 реальные `25:2525`/`587:2587` наружу, фронт из `Dockerfile.prod` (standalone,

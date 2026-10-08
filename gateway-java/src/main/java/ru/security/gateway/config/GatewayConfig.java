@@ -54,9 +54,24 @@ public class GatewayConfig {
     return server;
   }
 
+  @Bean("pipelineExecutor")
+  public org.springframework.core.task.TaskExecutor pipelineExecutor() {
+    // B: параллельная обработка очереди — одно медленное письмо (Yandex/GigaChat)
+    // больше не держит весь batch из 10. claim остаётся атомарным (SKIP LOCKED),
+    // каждое письмо — в своей транзакции через processClaimed.
+    org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor ex =
+        new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
+    ex.setCorePoolSize(4);
+    ex.setMaxPoolSize(8);
+    ex.setQueueCapacity(100);
+    ex.setThreadNamePrefix("pipeline-");
+    ex.setWaitForTasksToCompleteOnShutdown(true);
+    ex.initialize();
+    return ex;
+  }
+
   @Bean
-  public org.springframework.web.client.RestTemplate restTemplate() {
-    // Без таймаутов зависший ML вешает поток поллера навсегда.
+  public org.springframework.web.client.RestTemplate restTemplate() {    // Без таймаутов зависший ML вешает поток поллера навсегда.
     org.springframework.http.client.SimpleClientHttpRequestFactory f =
         new org.springframework.http.client.SimpleClientHttpRequestFactory();
     f.setConnectTimeout(3000);

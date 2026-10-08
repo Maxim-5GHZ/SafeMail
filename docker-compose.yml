@@ -42,8 +42,9 @@ services:
       - "8003:8003"
     environment:
       - PORT=8003
-      # SLM-веса (rubert-tiny2 ONNX) запечены в образ (stage 1 Dockerfile),
-      # volume не нужен. MODEL_DIR по умолчанию /models/rubert-tiny2.
+      # Внешний LLM вместо локальной SLM: ключ только из .env (в репо не коммитить).
+      # Пусто/нет сети — сервис стартует в rule-based fallback (эвристика главная).
+      - GIGACHAT_API_KEY=${GIGACHAT_API_KEY:-}
     restart: unless-stopped
 
   gateway:

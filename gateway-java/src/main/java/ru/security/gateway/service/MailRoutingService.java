@@ -7,7 +7,6 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -20,9 +19,7 @@ public class MailRoutingService {
 
   private final JavaMailSender externalMailSender;
   private final InboundPipelineService inboundPipelineService;
-
-  @Value("${mail.domain:corp-sec.ru}")
-  private String localDomain;
+  private final SystemSettingService systemSettingService;
 
   public void sendEmail(String fromUser, String toUser, String subject, String body, List<MultipartFile> attachments) {
     int at = toUser == null ? -1 : toUser.lastIndexOf('@');
@@ -42,7 +39,7 @@ public class MailRoutingService {
         }
       }
       String recipientDomain = toUser.substring(toUser.indexOf('@') + 1).toLowerCase();
-      if (recipientDomain.equalsIgnoreCase(localDomain)) {
+      if (systemSettingService.isLocalDomain(recipientDomain)) {
         log.info("Hairpin {} -> {} в AI-пайплайн", fromUser, toUser);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         message.writeTo(baos);
