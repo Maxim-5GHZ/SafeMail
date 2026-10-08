@@ -8,19 +8,9 @@ OUTPUT_FILE="all_code.txt"
 
 find . -type f \( \
     -name "*.py" \
-    -o -name "*.java" \
     -o -name "*.ts" -o -name "*.tsx" \
-    -o -name "*.js" \
-    -o -name "*.sql" \
     -o -name "Dockerfile*" \
     -o -name "docker-compose*.yml" \
-    -o -name "*.yml" \
-    -o -name "nginx.conf" \
-    -o -name "*.sh" \
-    -o -name ".env.example" \
-    -o -name "requirements.txt" \
-    -o -name "package.json" \
-    -o -name "pom.xml" \
     -o -name "AGENTS.md" \
   \) \
   -not -path "./.git/*" \
