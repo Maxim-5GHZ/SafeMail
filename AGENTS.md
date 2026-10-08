@@ -181,17 +181,16 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   leet-цифры — то же правило, что в enrich (только внутри букв).
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
-  Семантика — `app/semantic.py`: YandexGPT через Yandex Cloud (primary,
-  `YANDEX_API_KEY` + `YANDEX_FOLDER_ID`, опц. `YANDEX_MODEL` (дефолт `yandexgpt-lite`),
+  Семантика — `app/semantic.py`: Qwen через OpenRouter (primary,
+  `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL` (дефолт `qwen/qwen-2.5-7b-instruct`),
   `httpx`, таймаут 8с) +
   GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Конкурентный всплеск
-  режет `429` — один ретрай через 1с, потом fallback. Пулы запросов 6+1
-  (семафоры + keep-alive): каждый `explain()` сначала в YandexGPT, при падении —
-  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение YandexGPT
-  логируется warning-строкой `yandex fallback -> gigachat | reason | ms`
+  OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 6+1
+  (семафоры + keep-alive): каждый `explain()` сначала в Qwen, при падении —
+  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Qwen
+  логируется warning-строкой `qwen fallback -> gigachat | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
-  reason при HTTP-ошибках (401/403/429/5xx) несёт сниппет тела ответа
-  провайдера
+  reason при HTTP-ошибках (403/429/5xx) несёт сниппет тела ответа OpenRouter
   (первые 300 символов + `x-request-id`, `_error_snippet`) — иначе причина 403
   (регион/ключ/маршрут) теряется;
   счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.

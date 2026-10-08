@@ -53,8 +53,7 @@ ROUTE_OTHER=infosec@mysec.ru
 
 JWT_SECRET=<openssl rand -base64 48>       # обязательно сменить
 APP_ADMIN_PASSWORD=<стойкий пароль>        # обязательно сменить
-YANDEX_API_KEY=<ключ>                    # семантика classify (primary YandexGPT)
-YANDEX_FOLDER_ID=<id каталога>             # Yandex Cloud folder для modelUri
+OPENROUTER_API_KEY=<ключ>                  # семантика classify (primary Qwen); без него — только GigaChat
 GIGACHAT_API_KEY=<ключ>                    # fallback семантики; без обоих ключей — rule-based fallback
 
 BACKEND_URL=http://gateway:8080

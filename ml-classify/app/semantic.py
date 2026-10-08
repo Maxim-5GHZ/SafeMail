@@ -1,15 +1,15 @@
-"""Семантический инференс: YandexGPT («Алиса», primary) + GigaChat (fallback).
+"""Семантический инференс: Qwen через OpenRouter (primary) + GigaChat (fallback).
 
 Контракт сохранён: класс SemanticModel + синглтон MODEL с интерфейсом
   .available / .load() / .explain(text) / .predict(text)
 поэтому main.py (fuse_verdict, /internal/classify-threat) не меняется по форме.
 
 Правила:
-- Ключи — только из env: YANDEX_API_KEY + YANDEX_FOLDER_ID (опц. YANDEX_MODEL,
-  дефолт yandexgpt-lite) и GIGACHAT_API_KEY. В репо секретов нет.
-- Пулы запросов 6+1: семафор на 6 параллельных вызовов YandexGPT и 1 —
-  GigaChat; httpx-клиент Yandex с keep-alive (max_connections=6).
-- Каждый explain() сначала идёт в YandexGPT; при ошибке/таймауте/не-JSON/
+- Ключи — только из env: OPENROUTER_API_KEY (+ OPENROUTER_MODEL, дефолт
+  qwen-2.5-7b) и GIGACHAT_API_KEY. В репо секретов нет.
+- Пулы запросов 6+1: семафор на 6 параллельных вызовов Qwen и 1 —
+  GigaChat; httpx-клиент Qwen с keep-alive (max_connections=6).
+- Каждый explain() сначала идёт в Qwen; при ошибке/таймауте/не-JSON/
   safety-блоке — один заход в GigaChat (warning-лог с reason и ms);
   упали оба — ("NONE", 0.0, 0.0), пайплайн идёт по эвристическому
   fallback (fail-closed, как раньше без ключей).
@@ -33,15 +33,15 @@ from .prototypes import CATEGORIES, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
 logger = logging.getLogger("safemail.classify.semantic")
 
-MODEL_NAME = "yandexgpt-lite"
+MODEL_NAME = "qwen-2.5-7b"
 
-YANDEX_API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-YANDEX_DEFAULT_MODEL = "yandexgpt-lite"
-# Бюджет под gateway readTimeout 15с: 8с YandexGPT + ~5.5с GigaChat.
-YANDEX_TIMEOUT_S = 8.0
+OPENROUTER_DEFAULT_MODEL = "qwen/qwen-2.5-7b-instruct"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Бюджет под gateway readTimeout 15с: 8с Qwen + ~5.5с GigaChat.
+QWEN_TIMEOUT_S = 8.0
 GIGA_TIMEOUT_S = 5.5
-# Пулы запросов: 6 параллельных YandexGPT + 1 зарезервированный GigaChat.
-YANDEX_MAX_SLOTS = 6
+# Пулы запросов: 6 параллельных Qwen + 1 зарезервированный GigaChat.
+QWEN_MAX_SLOTS = 6
 GIGA_MAX_SLOTS = 1
 TEXT_LIMIT = 2000
 # Кап генерации: ответ — короткий JSON (~60-100 токенов), запас 3x.
@@ -61,6 +61,7 @@ SYSTEM_PROMPT_CLASSIFY = (
     '{"category": "NONE", "confidence": 0.05, "explanation": "коротко по-русски"}\n'
     "confidence — число 0..1. Мат без угрозы — OTHER_THREAT ~0.75. "
     "Обычное письмо — NONE с низкой уверенностью. "
+    "Бытовая химия (закупка хлора для бассейна и т.п.) — тоже NONE. "
     "Отвечай ТОЛЬКО JSON-объектом, без пояснений, приветствий и markdown."
 )
 
@@ -113,17 +114,17 @@ class ProviderError(Exception):
         self.reason = reason
 
 
-# Семафоры пулов: 6 параллельных YandexGPT + 1 GigaChat (fallback не ждёт очередь).
-_YANDEX_SEM = threading.Semaphore(YANDEX_MAX_SLOTS)
+# Семафоры пулов: 6 параллельных Qwen + 1 GigaChat (fallback не ждёт очередь).
+_QWEN_SEM = threading.Semaphore(QWEN_MAX_SLOTS)
 _GIGA_SEM = threading.Semaphore(GIGA_MAX_SLOTS)
 # Общий пул потоков (7 = 6+1): нужен, чтобы ограничить время GigaChat-вызова,
 # у которого в gigachat-пакете нет надёжного таймаута.
-_POOL = ThreadPoolExecutor(max_workers=YANDEX_MAX_SLOTS + GIGA_MAX_SLOTS,
+_POOL = ThreadPoolExecutor(max_workers=QWEN_MAX_SLOTS + GIGA_MAX_SLOTS,
                            thread_name_prefix="semprov")
 
 
 def _error_snippet(resp: httpx.Response, limit: int = 300) -> str:
-    """Короткий сниппет тела error-ответа провайдера для диагностики 403/429/5xx.
+    """Короткий сниппет тела error-ответа OpenRouter для диагностики 403/429/5xx.
 
     Гейт в теле пишет причину отказа (регион, ключ, маршрут) — без неё в логе
     только голый reason и гадание. Плюс x-request-id для переписки с поддержкой.
@@ -141,27 +142,14 @@ def _error_snippet(resp: httpx.Response, limit: int = 300) -> str:
         return f"{body} | x-request-id={req_id}" if body else f"x-request-id={req_id}"
     return body or "empty-body"
 
-def _parse_yandex_response(data: dict) -> str:
-    """Достать текст ассистента из ответа foundationModels/v1/completion.
-    Любая аномалия структуры — ProviderError("non_json") (роутер в fallback)."""
-    try:
-        alts = data["result"]["alternatives"]
-        raw = alts[0]["message"]["text"]
-    except Exception:
-        raise ProviderError("non_json")
-    if not isinstance(raw, str) or not raw.strip():
-        raise ProviderError("non_json")
-    return raw
 
-
-class YandexGPTProvider:
-    """Primary: YandexGPT через foundationModels/v1/completion (httpx, sync)."""
-
-    name = "yandex"
+class QwenOpenRouterProvider:
+    """Primary: Qwen 2.5 7B через OpenRouter Chat Completions (httpx)."""
+    name = "qwen"
 
     def __init__(self) -> None:
         self._client: httpx.Client | None = None
-        self._model_uri = ""
+        self._model = OPENROUTER_DEFAULT_MODEL
         self._headers: dict[str, str] = {}
         self.configured = False
 
@@ -171,21 +159,21 @@ class YandexGPTProvider:
 
     def configure(self) -> bool:
         """Чтение env без сетевых вызовов (сеть — только в classify)."""
-        api_key = (os.getenv("YANDEX_API_KEY", "") or "").strip()
-        folder = (os.getenv("YANDEX_FOLDER_ID", "") or "").strip()
-        if not api_key or not folder:
+        api_key = (os.getenv("OPENROUTER_API_KEY", "") or "").strip()
+        if not api_key:
             return False
-        model = (os.getenv("YANDEX_MODEL", "") or "").strip() or YANDEX_DEFAULT_MODEL
-        self._model_uri = f"gpt://{folder}/{model}/latest"
+        self._model = (os.getenv("OPENROUTER_MODEL", "") or "").strip() or OPENROUTER_DEFAULT_MODEL
+        referer = (os.getenv("OPENROUTER_REFERER", "") or "").strip() or "https://safemail.local"
         self._headers = {
-            "Authorization": f"Api-Key {api_key}",
-            "x-folder-id": folder,
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "HTTP-Referer": referer,
+            "X-Title": "SafeMail",
         }
         self._client = httpx.Client(
-            timeout=httpx.Timeout(YANDEX_TIMEOUT_S),
-            limits=httpx.Limits(max_connections=YANDEX_MAX_SLOTS,
-                                max_keepalive_connections=YANDEX_MAX_SLOTS),
+            timeout=httpx.Timeout(QWEN_TIMEOUT_S),
+            limits=httpx.Limits(max_connections=QWEN_MAX_SLOTS,
+                                max_keepalive_connections=QWEN_MAX_SLOTS),
         )
         self.configured = True
         return True
@@ -194,44 +182,41 @@ class YandexGPTProvider:
         """Строго: любая аномалия ответа — ProviderError (роутер уйдёт в GigaChat)."""
         assert self._client is not None
         payload = {
-            "modelUri": self._model_uri,
-            "completionOptions": {
-                "stream": False,
-                "temperature": 0,
-                "maxTokens": MAX_TOKENS,
-            },
+            "model": self._model,
             "messages": [
-                {"role": "system", "text": SYSTEM_PROMPT_CLASSIFY},
-                {"role": "user", "text": (text or "")[:TEXT_LIMIT]},
+                {"role": "system", "content": SYSTEM_PROMPT_CLASSIFY},
+                {"role": "user", "content": (text or "")[:TEXT_LIMIT]},
             ],
+            "temperature": 0,
+            "max_tokens": MAX_TOKENS,
         }
         try:
-            resp = self._client.post(YANDEX_API_URL, json=payload, headers=self._headers)
+            resp = self._client.post(OPENROUTER_API_URL, json=payload, headers=self._headers)
         except httpx.TimeoutException:
             raise ProviderError("timeout")
         except httpx.HTTPError as ex:
             raise ProviderError(f"network:{type(ex).__name__}")
-        if resp.status_code == 429:
-            # Один ретрай через секунду, прежде чем уходить в GigaChat-fallback.
+        if resp.status_code in (403, 429):
+            # OpenRouter режет всплески параллельных звонков: один ретрай через
+            # секунду, прежде чем уходить в GigaChat-fallback.
             time.sleep(1.0)
             try:
-                resp = self._client.post(YANDEX_API_URL, json=payload, headers=self._headers)
+                resp = self._client.post(OPENROUTER_API_URL, json=payload, headers=self._headers)
             except httpx.TimeoutException:
                 raise ProviderError("timeout")
             except httpx.HTTPError as ex:
                 raise ProviderError(f"network:{type(ex).__name__}")
-        if resp.status_code in (401, 403):
-            raise ProviderError(f"http_{resp.status_code}:{_error_snippet(resp)}")
         if resp.status_code == 429:
             raise ProviderError(f"http_429:{_error_snippet(resp)}")
+        if resp.status_code == 403:
+            raise ProviderError(f"http_403:{_error_snippet(resp)}")
         if resp.status_code >= 500:
             raise ProviderError(f"http_5xx:{_error_snippet(resp)}")
         if resp.status_code != 200:
             raise ProviderError(f"http_{resp.status_code}:{_error_snippet(resp)}")
         try:
-            raw = _parse_yandex_response(resp.json())
-        except ProviderError:
-            raise
+            data = resp.json()
+            raw = data["choices"][0]["message"]["content"]
         except Exception:
             raise ProviderError("non_json")
         if _is_safety_block(raw):
@@ -308,25 +293,25 @@ class GigaChatProvider:
 
 
 class SemanticModel:
-    """Роутер YandexGPT (primary) -> GigaChat (fallback) под старым интерфейсом."""
+    """Роутер Qwen (primary) -> GigaChat (fallback) под старым интерфейсом."""
 
     def __init__(self) -> None:
-        self._yandex = YandexGPTProvider()
+        self._qwen = QwenOpenRouterProvider()
         self._giga = GigaChatProvider()
         self.loaded = False
         self._lock = threading.Lock()
-        self._counters = {"yandex_ok": 0, "yandex_fallback": 0,
+        self._counters = {"qwen_ok": 0, "qwen_fallback": 0,
                           "gigachat_ok": 0, "both_fail": 0}
         self._local = threading.local()
 
     @property
     def available(self) -> bool:
-        return self.loaded and (self._yandex.available or self._giga.available)
+        return self.loaded and (self._qwen.available or self._giga.available)
 
     @property
     def active_name(self) -> str:
-        if self._yandex.available:
-            return "yandexgpt-lite"
+        if self._qwen.available:
+            return "qwen-2.5-7b"
         if self._giga.available:
             return "gigachat"
         return "none"
@@ -348,15 +333,15 @@ class SemanticModel:
     def load(self, model_dir: str | None = None) -> bool:
         """Инициализация без сетевых вызовов (сеть — только в explain)."""
         _ = model_dir  # остался для совместимости lifespan
-        has_yandex = self._yandex.configure()
+        has_qwen = self._qwen.configure()
         has_giga = self._giga.configure()
         self.loaded = True
-        if not has_yandex:
-            print("[SEMANTIC] YANDEX_API_KEY/FOLDER не заданы — YandexGPT выключен", flush=True)
+        if not has_qwen:
+            print("[SEMANTIC] OPENROUTER_API_KEY не задан — Qwen выключен", flush=True)
         if not has_giga:
             print("[SEMANTIC] GIGACHAT_API_KEY не задан — GigaChat-fallback выключен", flush=True)
-        if has_yandex or has_giga:
-            print(f"[SEMANTIC] провайдеры: yandex={'on' if has_yandex else 'off'}, "
+        if has_qwen or has_giga:
+            print(f"[SEMANTIC] провайдеры: qwen={'on' if has_qwen else 'off'}, "
                   f"gigachat={'on' if has_giga else 'off'}", flush=True)
             return True
         print("[SEMANTIC] нет провайдеров — работает rule-based fallback", flush=True)
@@ -364,7 +349,7 @@ class SemanticModel:
 
     def _via_gigachat(self, text: str, text_len: int) -> tuple[str, float, float, str | None]:
         if not self._giga.available:
-            logger.error("[SEMANTIC] yandex fallback: gigachat недоступен -> fail-closed NONE")
+            logger.error("[SEMANTIC] qwen fallback: gigachat недоступен -> fail-closed NONE")
             self._bump("both_fail")
             return ("NONE", 0.0, 0.0, None)
         with _GIGA_SEM:
@@ -401,22 +386,22 @@ class SemanticModel:
         if not self.available or not (text or "").strip():
             return ("NONE", 0.0, 0.0, None)
         text_len = len(text or "")
-        if self._yandex.available:
-            with _YANDEX_SEM:
+        if self._qwen.available:
+            with _QWEN_SEM:
                 t0 = time.perf_counter()
                 try:
-                    cat, conf = self._yandex.classify(text)
+                    cat, conf = self._qwen.classify(text)
                 except ProviderError as ex:
                     ms = int((time.perf_counter() - t0) * 1000)
-                    self._bump("yandex_fallback")
-                    logger.warning("[SEMANTIC] yandex fallback -> gigachat "
-                                   "| reason=%s | yandex_ms=%d | text_len=%d",
+                    self._bump("qwen_fallback")
+                    logger.warning("[SEMANTIC] qwen fallback -> gigachat "
+                                   "| reason=%s | qwen_ms=%d | text_len=%d",
                                    ex.reason, ms, text_len)
                     return self._via_gigachat(text, text_len)
                 ms = int((time.perf_counter() - t0) * 1000)
-            self._bump("yandex_ok")
-            logger.debug("[SEMANTIC] yandex ok | cat=%s conf=%.2f | ms=%d", cat, conf, ms)
-            self._local.provider = "yandex"
+            self._bump("qwen_ok")
+            logger.debug("[SEMANTIC] qwen ok | cat=%s conf=%.2f | ms=%d", cat, conf, ms)
+            self._local.provider = "qwen"
             none_score = 0.9 if cat == "NONE" else round(1.0 - conf, 4)
             return (cat, conf, none_score, None)
         return self._via_gigachat(text, text_len)
