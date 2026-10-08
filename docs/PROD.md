@@ -24,15 +24,42 @@ AI-пайплайн (`GatewayConfig`: 2 инстанса — MX-порт и subm
 Проверка распространения: `dig MX mysec.ru +short` → `10 mail.mysec.ru.`
 Распространение занимает от 15 минут до 2 часов — закладывайте время до демо.
 
-## 3. Окружение
+## 3. Окружение (`.env` на VPS — единственный файл, который читает compose)
 
 ```env
+# Домен ящиков: регистрация username -> username@mysec.ru, админ — admin@mysec.ru
 MAIL_DOMAIN=mysec.ru   # только сид при ПЕРВОМ старте; дальше домен меняется в /admin → Настройки
-MAIL_RELAY_HOST=smtp.your-provider.ru   # нужен, только если в /admin включён SMTP-релей
-MAIL_RELAY_PORT=587
-JWT_SECRET=<openssl rand -base64 48>    # обязательно сменить
-APP_ADMIN_PASSWORD=<стойкий пароль>     # обязательно сменить
+
+POSTGRES_DB=safemail
+POSTGRES_USER=safemail
 POSTGRES_PASSWORD=<стойкий пароль>      # обязательно сменить
+DATABASE_URL=jdbc:postgresql://postgres:5432/safemail
+POSTGRES_HOST_PORT=5432
+GATEWAY_HOST_PORT=8080
+
+SMTP_PORT=2525
+SMTP_HOST=0.0.0.0
+MAIL_RELAY_HOST=mailhog   # демо только на приём; relay чистой почты через него (--profile debug)
+MAIL_RELAY_PORT=1025
+
+PARSER_URL=http://ml-parser:8001
+ENRICH_URL=http://ml-enrich:8002
+CLASSIFY_URL=http://ml-classify:8003
+
+ROUTE_TERRORISM=infosec@mysec.ru   # куда уходят угрозы (перекрывается таблицей threat_routing_rules)
+ROUTE_MAN_MADE=infosec@mysec.ru
+ROUTE_ILLEGAL=infosec@mysec.ru
+ROUTE_OTHER=infosec@mysec.ru
+
+JWT_SECRET=<openssl rand -base64 48>       # обязательно сменить
+APP_ADMIN_PASSWORD=<стойкий пароль>        # обязательно сменить
+GIGACHAT_API_KEY=<ключ>                    # семантика classify; без него — rule-based fallback
+
+BACKEND_URL=http://gateway:8080
+NEXT_PUBLIC_MAIL_DOMAIN=mysec.ru   # = MAIL_DOMAIN (compose подставит сам, но пусть не врёт)
+
+NGINX_HTTP_PORT=80
+NGINX_HTTPS_PORT=443
 ```
 
 Входящая почта из интернета релея НЕ требует: при выключенном реле (дефолт)
@@ -45,10 +72,12 @@ POSTGRES_PASSWORD=<стойкий пароль>      # обязательно с
 ## 4. Подъём и тест
 
 ```bash
-cp .env.example .env   # + заполнить прод-значения
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+cp .env.example .env   # + заполнить прод-значения из §3 выше
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile debug up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
 ```
+(`--profile debug` нужен: mailhog в проде по умолчанию не стартует,
+а relay чистой почты идёт через него, иначе статусы упадут в FAILED.)
 
 1. С обычного Gmail отправьте письмо на `denden@mysec.ru` (пользователь из системы).
 2. Цепочка: Google → `MX mysec.ru` → ваш IP `:25` → SubEthaSMTP →
