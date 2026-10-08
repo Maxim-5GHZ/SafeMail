@@ -4,8 +4,10 @@ import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,13 +50,35 @@ public class InboundPipelineService {
   @Value("${ml.classify-url:http://localhost:8003}")
   private String classifyUrl;
 
+  /** UTF-8, прочитанный как Latin-1: Ð/Ñ + байт второй половины (в строке — C1-управляющие). */
+  static final Pattern MOJIBAKE_PAT = Pattern.compile("[ÐÑ][\\x80-\\xBF]");
+
+  /** Декодирует Subject: RFC2047 + починка mojibake (клиент слал сырой UTF-8 без кодирования). */
+  static String decodeSubject(String rawHeaderValue) {
+    if (rawHeaderValue == null) return null;
+    String s;
+    try {
+      s = jakarta.mail.internet.MimeUtility.decodeText(
+          jakarta.mail.internet.MimeUtility.unfold(rawHeaderValue));
+    } catch (Exception e) {
+      s = rawHeaderValue;
+    }
+    for (int i = 0; i < 2 && s != null && MOJIBAKE_PAT.matcher(s).find(); i++) {
+      String fixed = new String(s.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+      if (fixed.equals(s)) break;
+      s = fixed;
+    }
+    return s;
+  }
+
   /** Вызывается из SubEthaSMTP-хендлера и из hairpin. */
   @Transactional
   public UUID receiveRaw(String from, String to, byte[] raw) {
     String subject = null, smtpId = null;
     try {
       MimeMessage mime = new MimeMessage(Session.getDefaultInstance(new Properties()), new ByteArrayInputStream(raw));
-      subject = mime.getSubject();
+      String[] subjHdr = mime.getHeader("Subject");
+      subject = subjHdr != null && subjHdr.length > 0 ? decodeSubject(subjHdr[0]) : null;
       String[] hdr = mime.getHeader("Message-ID");
       if (hdr != null && hdr.length > 0) smtpId = hdr[0];
     } catch (Exception e) {
