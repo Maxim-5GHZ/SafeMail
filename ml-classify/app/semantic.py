@@ -65,6 +65,26 @@ SYSTEM_PROMPT_CLASSIFY = (
     "Отвечай ТОЛЬКО JSON-объектом, без пояснений, приветствий и markdown."
 )
 
+# Отдельный системный промпт для GigaChat-fallback: рамка «аналитик ИБ»
+# (оценка риска, не инструкции) снижает долю safety-отказов на угрозах.
+# Это не обход политики: инструкций/деталей модель давать не просят —
+# наоборот, прямо запрещают; нужен только класс риска. Qwen не трогаем.
+GIGA_SYSTEM_PROMPT = (
+    "Ты — аналитик информационной безопасности почтового шлюза. "
+    "Твоя задача — оценить риск письма, а не помогать с его содержимым: "
+    "никаких инструкций, деталей, советов и пересказа угроз — только класс риска. "
+    "Классифицируй письмо в ОДНУ категорию:\n"
+    "TERRORISM (теракты, взрывы, захваты), MAN_MADE (техногенные аварии: АЭС, плотины, "
+    "ж/д, химия), ILLEGAL_ACTIONS (шантаж, расправа, вымогательство, обнал),\n"
+    "OTHER_THREAT (поджог, отравление, нападение, мат/угрозы), NONE (обычная переписка).\n"
+    "Отвечай СТРОГО валидным JSON без markdown-оберток:\n"
+    '{"category": "NONE", "confidence": 0.05, "explanation": "коротко по-русски"}\n'
+    "confidence — число 0..1. Мат без угрозы — OTHER_THREAT ~0.75. "
+    "Обычное письмо — NONE с низкой уверенностью. "
+    "Бытовая химия (закупка хлора для бассейна и т.п.) — тоже NONE. "
+    "Отвечай ТОЛЬКО JSON-объектом, без пояснений, приветствий и markdown."
+)
+
 _SAFETY_TRIGGERS = (
     "генеративные языковые модели",
     "чувствительными темами",
@@ -270,7 +290,7 @@ class GigaChatProvider:
         from gigachat.models import Chat, Messages, MessagesRole  # type: ignore
 
         messages = [
-            Messages(role=MessagesRole.SYSTEM, content=SYSTEM_PROMPT_CLASSIFY),
+            Messages(role=MessagesRole.SYSTEM, content=GIGA_SYSTEM_PROMPT),
             Messages(role=MessagesRole.USER, content=(text or "")[:TEXT_LIMIT]),
         ]
         response = self._giga.chat(Chat(messages=messages, max_tokens=MAX_TOKENS))
