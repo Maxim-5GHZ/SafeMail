@@ -317,6 +317,8 @@ def run_startup_tests() -> None:
     failed += run_veto_startup_tests()
     # Роутер Qwen->GigaChat: fallback и его логи (стабы провайдеров, без сети).
     failed += run_router_startup_tests()
+    # Сниппет тела error-ответа OpenRouter (диагностика 403/429/5xx в логе).
+    failed += run_error_snippet_tests()
     # Подтверждение одиночного срабатывания семантики (стаб explain со счётчиком).
     failed += run_confirm_startup_tests()
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
@@ -481,6 +483,83 @@ def run_router_startup_tests() -> int:
         slog.setLevel(old_level)
     if not failed:
         print("[ROUTER TEST] qwen->gigachat fallback + логи в порядке", flush=True)
+    return failed
+
+
+def run_error_snippet_tests() -> int:
+    """Сниппет тела error-ответа OpenRouter для диагностики 403/429/5xx.
+    Без сети: стаб ответа + стаб провайдера. Проверяем обрезку/схлопывание,
+    x-request-id, пустое тело и доставку reason со сниппетом в warning-лог."""
+    import logging as _logging
+
+    from . import semantic as _sem
+    failed = 0
+
+    class _Resp:
+        def __init__(self, text: str, req_id: str = "") -> None:
+            self.text = text
+            self._h = {"x-request-id": req_id} if req_id else {}
+
+        @property
+        def headers(self):  # type: ignore
+            return self
+
+        def get(self, key: str, default: str = "") -> str:
+            return self._h.get(key, default)
+
+    long_body = '{"error": {"message": "Access denied\nfor region ' + "x" * 500 + '"}}'
+    s = _sem._error_snippet(_Resp(long_body, "req-123"))  # type: ignore
+    if "\n" in s or "Access denied for region" not in s or "x-request-id=req-123" not in s:
+        print(f"[TEST FAIL] snippet format: {s[:100]!r}", flush=True)
+        failed += 1
+    if len(s) > 300 + len(" | x-request-id=req-123"):
+        print(f"[TEST FAIL] snippet not truncated: len={len(s)}", flush=True)
+        failed += 1
+    if _sem._error_snippet(_Resp("")) != "empty-body":  # type: ignore
+        print("[TEST FAIL] snippet empty body", flush=True)
+        failed += 1
+    # reason со сниппетом доходит до warning-лога роутера (стаб classify).
+    model = SEMANTIC_MODEL
+    orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
+    records: list[str] = []
+
+    class _Cap(_logging.Handler):
+        def emit(self, record: _logging.LogRecord) -> None:
+            records.append(record.getMessage())
+
+    cap = _Cap()
+    slog = _logging.getLogger("safemail.classify.semantic")
+    old_level = slog.level
+    slog.addHandler(cap)
+    slog.setLevel(_logging.DEBUG)
+
+    class _Fake:
+        available = True
+
+        def __init__(self, error: Exception | None = None) -> None:
+            self._error = error
+
+        def classify(self, text: str) -> tuple[str, float]:
+            assert self._error is not None
+            raise self._error
+
+    try:
+        model.loaded = True
+        model._qwen = _Fake(error=_sem.ProviderError(  # type: ignore
+            "http_403:Access denied for region | x-request-id=req-1"))
+        model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
+        records.clear()
+        model.explain("тестовое письмо")
+        if not any("qwen fallback" in m and "http_403:Access denied for region" in m
+                   and "x-request-id=req-1" in m for m in records):
+            print(f"[TEST FAIL] snippet log missing: {records}", flush=True)
+            failed += 1
+    finally:
+        model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        slog.removeHandler(cap)
+        slog.setLevel(old_level)
+    if not failed:
+        print("[SNIPPET TEST] тело 403 в логе, обрезка и request-id в порядке", flush=True)
     return failed
 
 

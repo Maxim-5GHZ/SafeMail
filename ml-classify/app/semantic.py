@@ -21,6 +21,7 @@
 import json
 import logging
 import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -121,9 +122,28 @@ _POOL = ThreadPoolExecutor(max_workers=QWEN_MAX_SLOTS + GIGA_MAX_SLOTS,
                            thread_name_prefix="semprov")
 
 
+def _error_snippet(resp: httpx.Response, limit: int = 300) -> str:
+    """Короткий сниппет тела error-ответа OpenRouter для диагностики 403/429/5xx.
+
+    Гейт в теле пишет причину отказа (регион, ключ, маршрут) — без неё в логе
+    только голый reason и гадание. Плюс x-request-id для переписки с поддержкой.
+    Тело запроса (письмо) и ключ сюда не попадают. Пустое/битое тело — не роняет.
+    """
+    try:
+        req_id = (resp.headers.get("x-request-id", "") or "").strip()
+    except Exception:
+        req_id = ""
+    try:
+        body = re.sub(r"\s+", " ", (resp.text or "")[:limit]).strip()
+    except Exception:
+        body = ""
+    if req_id:
+        return f"{body} | x-request-id={req_id}" if body else f"x-request-id={req_id}"
+    return body or "empty-body"
+
+
 class QwenOpenRouterProvider:
     """Primary: Qwen 2.5 7B через OpenRouter Chat Completions (httpx)."""
-
     name = "qwen"
 
     def __init__(self) -> None:
@@ -186,13 +206,13 @@ class QwenOpenRouterProvider:
             except httpx.HTTPError as ex:
                 raise ProviderError(f"network:{type(ex).__name__}")
         if resp.status_code == 429:
-            raise ProviderError("http_429")
+            raise ProviderError(f"http_429:{_error_snippet(resp)}")
         if resp.status_code == 403:
-            raise ProviderError("http_403")
+            raise ProviderError(f"http_403:{_error_snippet(resp)}")
         if resp.status_code >= 500:
-            raise ProviderError("http_5xx")
+            raise ProviderError(f"http_5xx:{_error_snippet(resp)}")
         if resp.status_code != 200:
-            raise ProviderError(f"http_{resp.status_code}")
+            raise ProviderError(f"http_{resp.status_code}:{_error_snippet(resp)}")
         try:
             data = resp.json()
             raw = data["choices"][0]["message"]["content"]

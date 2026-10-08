@@ -190,6 +190,9 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Qwen
   логируется warning-строкой `qwen fallback -> gigachat | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
+  reason при HTTP-ошибках (403/429/5xx) несёт сниппет тела ответа OpenRouter
+  (первые 300 символов + `x-request-id`, `_error_snippet`) — иначе причина 403
+  (регион/ключ/маршрут) теряется;
   счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.
   Кап генерации `MAX_TOKENS=300` (ответ — короткий JSON, запас 3x): обрезка даёт
   `non_json` → штатный fallback, а не неверный вердикт.
