@@ -174,8 +174,20 @@ class MistralOpenRouterProvider:
             raise ProviderError("timeout")
         except httpx.HTTPError as ex:
             raise ProviderError(f"network:{type(ex).__name__}")
+        if resp.status_code in (403, 429):
+            # OpenRouter режет всплески параллельных звонков: один ретрай через
+            # секунду, прежде чем уходить в GigaChat-fallback.
+            time.sleep(1.0)
+            try:
+                resp = self._client.post(OPENROUTER_API_URL, json=payload, headers=self._headers)
+            except httpx.TimeoutException:
+                raise ProviderError("timeout")
+            except httpx.HTTPError as ex:
+                raise ProviderError(f"network:{type(ex).__name__}")
         if resp.status_code == 429:
             raise ProviderError("http_429")
+        if resp.status_code == 403:
+            raise ProviderError("http_403")
         if resp.status_code >= 500:
             raise ProviderError("http_5xx")
         if resp.status_code != 200:

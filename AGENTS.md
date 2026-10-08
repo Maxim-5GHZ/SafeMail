@@ -40,8 +40,8 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
 - Очередь без Kafka: `status='PENDING'` + `FOR UPDATE SKIP LOCKED` +
   атомарный claim `claimAsInProgress → IN_PROGRESS` (по одному письму в своей
   транзакции через `processClaimed`), зависшие `IN_PROGRESS` старше 30 мин
-  возвращаются в `PENDING` (`resetStale`). Поллинг каждые 5 с, batch до 10
-  раздаётся по пулу `pipelineExecutor` (4/8, `GatewayConfig`) — каждое письмо
+  возвращаются в `PENDING` (`resetStale`). Поллинг каждые 5 с, batch до 15
+  раздаётся по пулу `pipelineExecutor` (8/15, `GatewayConfig`) — каждое письмо
   в своей транзакции, claim атомарный, head-of-line blocking нет.
   `triggerReprocessing` после коммита сразу ставит письмо в тот же пул
   (`afterCommit → processClaimed`), не ждёт следующего полла.
@@ -55,6 +55,9 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
   через torch+optimum, в рантайме только `numpy/onnxruntime/transformers`).
   `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает), семантика ловит
   парафразы при `NONE` (`TH=0.65`, `MARGIN=0.05`, флаг `semantic:<cat>:<score>`).
+  Одиночное срабатывание семантики при чистом `NONE` подтверждается вторым
+  замером: двойной сигнал — карантин, иначе доставка с флагом
+  `semantic-unconfirmed:<cat>:<score>` (одиночный выброс LLM чистую почту не блокирует).
   Вето: слабый сигнал (`<0.75`, без stopword/profanity) гасится разборчивым `NONE`
   семантики (`available` + sem `NONE` + none-скор `≥0.85`, `VETO_NONE_MIN`,
   флаг `semantic-veto:<cat>:<score>`); raw у нормы по промпту всегда низкий
@@ -148,6 +151,9 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   обычным транслитом; ограничение зафиксировано). Zero-width (`U+200B/C/D`,
   `U+FEFF`) режется сразу по всему тексту, счётчик — `hidden_chars_removed`,
   gateway дописывает флаг `hidden-chars:N` в `heuristic_flags`. Скоринг: IP +50, хит чёрного списка +30/+15, без TLS +10.
+  leet-цифры (`1→и, 3→з, 0→о…`) маппятся только внутри букв (`хл0р→хлор`);
+  чистые числа и хвосты цифр (`13, 2026, залп13`) не трогаем — иначе
+  псевдо-мат «залпиз» уводит чистое письмо в карантин (кейс залп-13).
 - **classify** `POST /internal/classify-threat {text, stopwords?[{pattern,category}]}` →
   `{category, confidence, explanation, heuristic_score, heuristic_flags,
   semantic_category, semantic_score, semantic_comment, model}`.
@@ -158,11 +164,13 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   Внутри `ToxicityAndProfanityFilter.normalize/analyze`:
   склейка только `.-_*+` внутри слов (пробелы хранить!), `y→й`,
   safe-подстроки (`колебан, рубл, скипидар…`) не считать матом.
+  leet-цифры — то же правило, что в enrich (только внутри букв).
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
   Семантика — `app/semantic.py`: Mistral через OpenRouter (primary,
   `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL`, `httpx`, таймаут 8с) +
-  GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Пулы запросов 6+1
+  GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Конкурентный всплеск
+  OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 6+1
   (семафоры + keep-alive): каждый `explain()` сначала в Mistral, при падении —
   один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Mistral
   логируется warning-строкой `mistral fallback -> gigachat | reason | ms`

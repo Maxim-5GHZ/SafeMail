@@ -77,17 +77,34 @@ class ToxicityAndProfanityFilter:
         t = re.sub(r"([a-zа-я0-9])[\.\-_ʼ\*\+]+([a-zа-я0-9])", r"\1\2", t)
         t = re.sub(r"([a-zа-я0-9])[\.\-_ʼ\*\+]+([a-zа-я0-9])", r"\1\2", t)
         t = re.sub(r"(.)\1{2,}", r"\1", t)
+        # leet-цифры — только внутри буквенных runs (как в enrich transliterate):
+        # чистые числа («13», «2026») не трогаем, иначе «залп-13» превращается
+        # в псевдо-мат «залпиз» и чистые письма уходят в карантин (кейс залп-13).
+        # В run входят и маппируемые символы (@!$), иначе «p!zdec» рвётся на
+        # куски и «!» не маппится (регрессия токсик-фильтра).
+        return re.sub(r"[a-zа-яё0-9@!$]+", self._transliterate_run, t)
+
+    def _transliterate_run(self, m: re.Match) -> str:
+        tok = m.group(0)
         out: list[str] = []
         i = 0
-        while i < len(t):
-            if i + 1 < len(t) and t[i:i + 2] in self.char_map:
-                out.append(self.char_map[t[i:i + 2]])
+        while i < len(tok):
+            # len==2 обязательно: срез из 1 символа в конце иначе матчится
+            # на однобуквенные ключи и обходит проверку позиции цифры ниже.
+            if i + 1 < len(tok) and tok[i:i + 2] in self.char_map:
+                out.append(self.char_map[tok[i:i + 2]])
                 i += 2
-            elif t[i] in self.char_map:
-                out.append(self.char_map[t[i]])
+            elif tok[i] in self.char_map:
+                ch = tok[i]
+                if ch.isdigit():
+                    prev_ok = i > 0 and re.match(r"[a-zа-яё]", tok[i - 1]) is not None
+                    next_ok = i + 1 < len(tok) and re.match(r"[a-zа-яё]", tok[i + 1]) is not None
+                    out.append(self.char_map[ch] if (prev_ok and next_ok) else ch)
+                else:
+                    out.append(self.char_map[ch])
                 i += 1
             else:
-                out.append(t[i])
+                out.append(tok[i])
                 i += 1
         return "".join(out)
 
@@ -204,6 +221,8 @@ def run_startup_tests() -> None:
         ("не требует установки сторонних пакетов", False),
         ("учеба в университете", False),
         ("хлеб свежий", False),
+        # Чистые числа — не угроза и не мат (кейс залп-13: «залп13» — не псевдо-мат).
+        ("залп13 чист, встреча в 13:00", False),
     ]
     failed = 0
     for text, expected in cases:
@@ -240,6 +259,14 @@ def run_startup_tests() -> None:
         if parse_llm_answer(raw) != expected:
             print(f"[TEST FAIL] trunc-parse {raw!r} got {parse_llm_answer(raw)}", flush=True)
             failed += 1
+    # leet-цифры — только внутри букв (как в enrich): «залп-13» не должен
+    # превращаться в псевдо-мат «залпиз», а «хл0р» — обязан стать «хлор».
+    if FILTER.normalize("залп-13 чист (13)") != "залп13 чист (13)":
+        print(f"[TEST FAIL] digits got '{FILTER.normalize('залп-13 чист (13)')}'", flush=True)
+        failed += 1
+    if FILTER.normalize("хл0р") != "хлор":
+        print(f"[TEST FAIL] leet-interior got '{FILTER.normalize('хл0р')}'", flush=True)
+        failed += 1
     # Управляемые стоп-слова: прямой/транслит/обфускация/false-positive/пустой список
     sw = [StopwordRule(pattern="взрывчатка", category="TERRORISM"),
           StopwordRule(pattern="обнал", category="ILLEGAL_ACTIONS")]
@@ -270,6 +297,8 @@ def run_startup_tests() -> None:
     failed += run_veto_startup_tests()
     # Роутер Mistral->GigaChat: fallback и его логи (стабы провайдеров, без сети).
     failed += run_router_startup_tests()
+    # Подтверждение одиночного срабатывания семантики (стаб explain со счётчиком).
+    failed += run_confirm_startup_tests()
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
     failed += run_semantic_startup_tests()
     # Формат комментария SLM для шторки: одна строка, стабильные маркеры.
@@ -423,6 +452,56 @@ def run_router_startup_tests() -> int:
         slog.setLevel(old_level)
     if not failed:
         print("[ROUTER TEST] mistral->gigachat fallback + логи в порядке", flush=True)
+    return failed
+
+
+def run_confirm_startup_tests() -> int:
+    """Подтверждение семантического срабатывания при чистой эвристике.
+    Живую сеть не трогаем — SEMANTIC_MODEL.explain подменяется счётчиком.
+    1. выброс + NONE -> доставка + флаг semantic-unconfirmed (кейс залп-13);
+    2. угроза + угроза -> карантин той же категории;
+    3. выброс + fallback-нули -> доставка (как при лежащих провайдерах)."""
+    failed = 0
+    orig_explain = SEMANTIC_MODEL.explain
+    cls = type(SEMANTIC_MODEL)
+    orig_available = cls.available
+
+    def fuse_none() -> tuple[str, list[str]]:
+        fcat, _fs, fflags, _fexp, _sc, _ss, _cm = fuse_verdict(
+            "NONE", 0.05, [], "Маркеры угроз не обнаружены.", "t")
+        return fcat, fflags
+
+    try:
+        cls.available = property(lambda self: True)  # type: ignore
+        # 1. Одиночный выброс гасится.
+        calls = iter([("OTHER_THREAT", 0.75, 0.25, None),
+                      ("NONE", 0.05, 0.9, None)])
+        SEMANTIC_MODEL.explain = lambda text: next(calls)  # type: ignore
+        fcat, fflags = fuse_none()
+        if fcat != "NONE" or not any(f.startswith("semantic-unconfirmed:") for f in fflags):
+            print(f"[TEST FAIL] confirm/unconfirmed got {fcat}/{fflags}", flush=True)
+            failed += 1
+        # 2. Двойной сигнал держит карантин.
+        calls2 = iter([("TERRORISM", 0.9, 0.1, None),
+                       ("TERRORISM", 0.85, 0.15, None)])
+        SEMANTIC_MODEL.explain = lambda text: next(calls2)  # type: ignore
+        fcat2, _ = fuse_none()
+        if fcat2 != "TERRORISM":
+            print(f"[TEST FAIL] confirm/double got {fcat2}", flush=True)
+            failed += 1
+        # 3. Подтверждение упало в fallback — доставка, как без провайдеров.
+        calls3 = iter([("OTHER_THREAT", 0.75, 0.25, None),
+                       ("NONE", 0.0, 0.0, None)])
+        SEMANTIC_MODEL.explain = lambda text: next(calls3)  # type: ignore
+        fcat3, fflags3 = fuse_none()
+        if fcat3 != "NONE" or not any(f.startswith("semantic-unconfirmed:") for f in fflags3):
+            print(f"[TEST FAIL] confirm/fallback got {fcat3}/{fflags3}", flush=True)
+            failed += 1
+    finally:
+        SEMANTIC_MODEL.explain = orig_explain  # type: ignore
+        cls.available = orig_available  # type: ignore
+    if not failed:
+        print("[CONFIRM TEST] одиночный выброс гасится, двойной держит карантин", flush=True)
     return failed
 
 
@@ -608,9 +687,27 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
             explanation += f" Семантика подтверждает ({sem_score:.2f})."
         return (category, score, flags, explanation, sem_cat, sem_score, comment)
     if category == "NONE":
-        explanation = (f"Семантический инференс (SLM): {explanation} "
-                       f"Парафраз: {RU_CATEGORY.get(sem_cat, sem_cat)} ({sem_score:.2f}).")
-        return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score, comment)
+        if sem_cat == "NONE":
+            explanation = (f"Семантический инференс (SLM): {explanation} "
+                           f"Парафраз: {RU_CATEGORY.get(sem_cat, sem_cat)} ({sem_score:.2f}).")
+            return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score, comment)
+        # Подтверждение одиночного срабатывания: второй замер семантики.
+        # Иначе одиночный выброс LLM кладёт чистую почту в карантин.
+        # Карантин — только по двойному сигналу; неподтверждённое — в доставку
+        # с флагом semantic-unconfirmed (видно в шторке /admin).
+        s2_best, s2_raw, s2_none, _ = SEMANTIC_MODEL.explain(normalized)
+        s2_caught = (s2_best != "NONE" and s2_raw >= SEMANTIC_THRESHOLD
+                     and s2_raw - s2_none >= SEMANTIC_MARGIN)
+        if s2_caught:
+            explanation = (f"Семантический инференс (SLM): {explanation} "
+                           f"Парафраз: {RU_CATEGORY.get(sem_cat, sem_cat)} ({sem_score:.2f}, "
+                           f"подтверждено {s2_raw:.2f}).")
+            return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score, comment)
+        flags = flags + [f"semantic-unconfirmed:{sem_cat.lower()}:{sem_score:.2f}"]
+        explanation = (f"{explanation} Одиночное срабатывание семантики "
+                       f"({RU_CATEGORY.get(sem_cat, sem_cat)}, {sem_score:.2f}) "
+                       f"не подтверждено повторным замером — письмо доставлено.")
+        return ("NONE", score, flags, explanation, "NONE", 0.0, comment)
     if sem_cat == category:
         return (category, max(score, sem_score), flags,
                 explanation + f" Семантика согласна ({sem_score:.2f}).",

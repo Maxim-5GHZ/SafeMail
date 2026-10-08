@@ -76,16 +76,28 @@ def strip_zero_width(text: str) -> tuple[str, int]:
 
 
 def transliterate(token: str) -> str:
-    """Посимвольный транслит латиница/leet -> кириллица (старое поведение)."""
+    """Посимвольный транслит латиница/leet -> кириллица (старое поведение).
+    leet-цифры (1->и, 3->з, 0->о...) маппятся, только если цифра внутри букв
+    (хл0р, б0мба). Чистые числа (13, 2026) и хвосты цифр (залп13) не трогаем —
+    иначе «залп-13» превращается в псевдо-мат «залпиз» и чистые письма
+    уходят в карантин (кейс залп-13)."""
     out: list[str] = []
     i = 0
     while i < len(token):
         two = token[i:i + 2]
-        if two in DIGRAPHS or two in CHAR_MAP:
+        # len==2 обязательно: срез из 1 символа в конце иначе матчится
+        # на однобуквенные ключи и обходит проверку позиции цифры ниже.
+        if len(two) == 2 and (two in DIGRAPHS or two in CHAR_MAP):
             out.append(DIGRAPHS.get(two, CHAR_MAP.get(two, two)))
             i += 2
         elif token[i] in CHAR_MAP:
-            out.append(CHAR_MAP[token[i]])
+            ch = token[i]
+            if ch.isdigit():
+                prev_ok = i > 0 and re.match(r"[a-zа-яё]", token[i - 1]) is not None
+                next_ok = i + 1 < len(token) and re.match(r"[a-zа-яё]", token[i + 1]) is not None
+                out.append(CHAR_MAP[ch] if (prev_ok and next_ok) else ch)
+            else:
+                out.append(CHAR_MAP[ch])
             i += 1
         else:
             out.append(token[i])
@@ -243,6 +255,14 @@ def run_startup_tests() -> None:
     check("zero-width-normalized", "бомба" in resp["normalized_text"], f"got '{resp['normalized_text']}'")
     # Пробелы не склеиваем (канон)
     check("spaces-kept", normalize("а б") == "а б", f"got '{normalize('а б')}'")
+    # leet-цифры — только внутри букв (кейс залп-13): чистые числа и хвосты
+    # цифр не трогаем, иначе псевдо-мат «залпиз» уводит чистое письмо в карантин.
+    check("digits-untouched", normalize("залп-13 чист (13)") == "залп13 чист (13)",
+          f"got '{normalize('залп-13 чист (13)')}'")
+    check("digits-year", normalize("счёт 2026 к оплате 100 рублей") == "счёт 2026 к оплате 100 рублей",
+          f"got '{normalize('счёт 2026 к оплате 100 рублей')}'")
+    check("leet-interior", normalize("хл0р и б0мба") == "хлор и бомба",
+          f"got '{normalize('хл0р и б0мба')}'")
     # URL не транслитерируем (контракт)
     resp_url = normalize_enrich(EnrichRequest(text="идти http://track-sabotage-leak.ru/login сюда", urls=[]))
     check("url-untouched", "http://track-sabotage-leak.ru/login" in resp_url["normalized_text"],
