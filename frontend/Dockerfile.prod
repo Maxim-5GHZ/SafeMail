@@ -11,8 +11,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # rewrites (/backend/*) и NEXT_PUBLIC_* запекаются в next build —
 # рантайм-ENV их не меняет, поэтому тянем build-args (см. compose).
+# Дефолта нет: значение только из env; пустое допустимо — фронт возьмёт живой /public/config.
 ARG BACKEND_URL=http://gateway:8080
-ARG NEXT_PUBLIC_MAIL_DOMAIN=corp-sec.ru
+ARG NEXT_PUBLIC_MAIL_DOMAIN
 ENV BACKEND_URL=$BACKEND_URL NEXT_PUBLIC_MAIL_DOMAIN=$NEXT_PUBLIC_MAIL_DOMAIN
 RUN npm run build
 

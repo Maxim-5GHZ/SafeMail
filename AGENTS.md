@@ -196,8 +196,17 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 `allowedDomains` — живой домен для форм), `GET/PUT /api/v1/admin/settings`
 (только `ADMIN`; `primaryDomain` обязателен, `allowedDomains[] ≤20`,
 `relayPort 1..65535`; домены валидируются `SystemSettingService.normalizeDomain`).
-`MAIL_DOMAIN` в env — только сид при первом старте (`V8`, `system_settings` id=1
-+ авто-алиас `mail.X ↔ X`); рантайм — из БД. Релей выключен (дефолт):
+`MAIL_DOMAIN` в env — обязателен (без него gateway fail-fast, дефолта-литерала
+нет ни в коде, ни в compose — только значение из `.env`; пример дефолта живёт
+исключительно в `.env.example`) и это сид при первом старте (`V8`,
+`system_settings` id=1 + авто-алиас `mail.X ↔ X`); рантайм — из БД.
+Смена домена (`PUT /admin/settings`) в той же транзакции пересаживает внутренние
+адреса на новый primary (тот же local-part): `threat_routing_rules` + `users.email`;
+внешние адреса и история писем — никогда; коллизия email — пропуск строки с отчётом.
+Ответ несёт `rebasedRules/rebasedUsers/skippedUsers[]` (фронт показывает итог).
+Сиды `V1` (`infosec@…` исторического домена) чинит при старте `RoutingRuleSeeder`
+(только строки-остатки сида; ручные внешние адреса не трогает; цель — `ROUTE_*`
+из env, иначе `infosec@<primary>`). Релей выключен (дефолт):
 чистое письмо не пересылается, а хранится локально (`STORED_LOCALLY`, статус
 `DELIVERED`); карантин/forward/release — тоже без SMTP (только аудит
 `delivery_logs`). Фильтр `?recipient=` на своём домене ищет по всем алиасам

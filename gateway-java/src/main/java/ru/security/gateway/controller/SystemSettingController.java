@@ -35,10 +35,14 @@ public class SystemSettingController {
 
   @PutMapping("/admin/settings")
   public ResponseEntity<SystemSettingsDto> updateAdminSettings(@Valid @RequestBody SystemSettingsDto req) {
-    SystemSetting s = settingService.updateSettings(
+    SystemSettingService.SettingsUpdateResult res = settingService.updateSettings(
         req.getPrimaryDomain(), req.getAllowedDomains(),
         req.isRelayEnabled(), req.getRelayHost(), req.getRelayPort());
-    return ResponseEntity.ok(toDto(s));
+    SystemSettingsDto dto = toDto(res.settings());
+    dto.setRebasedRules(res.rebasedRules());
+    dto.setRebasedUsers(res.rebasedUsers());
+    dto.setSkippedUsers(res.skippedUsers());
+    return ResponseEntity.ok(dto);
   }
 
   private SystemSettingsDto toDto(SystemSetting s) {

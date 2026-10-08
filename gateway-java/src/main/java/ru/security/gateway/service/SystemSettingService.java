@@ -11,7 +11,11 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.security.gateway.domain.SystemSetting;
+import ru.security.gateway.domain.ThreatRoutingRule;
+import ru.security.gateway.domain.User;
 import ru.security.gateway.repository.SystemSettingRepository;
+import ru.security.gateway.repository.ThreatRoutingRuleRepository;
+import ru.security.gateway.repository.UserRepository;
 
 /**
  * Динамические настройки почты (домены + релей), меняются из /admin без пересборки.
@@ -26,9 +30,16 @@ public class SystemSettingService implements CommandLineRunner {
   private static final Pattern DOMAIN_PAT = Pattern.compile("^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$");
 
   private final SystemSettingRepository repo;
+  private final ThreatRoutingRuleRepository rulesRepo;
+  private final UserRepository usersRepo;
 
-  @Value("${mail.domain:corp-sec.ru}")
+  /** Только из env (MAIL_DOMAIN): дефолта-литерала нет, без переменной контекст не стартует. */
+  @Value("${mail.domain}")
   private String defaultEnvDomain;
+
+  /** Итог смены настроек: сохранённая строка + счётчики пересаженных внутренних адресов. */
+  public record SettingsUpdateResult(SystemSetting settings, int rebasedRules,
+                                     int rebasedUsers, List<String> skippedUsers) {}
 
   @Override
   @Transactional
@@ -50,12 +61,22 @@ public class SystemSettingService implements CommandLineRunner {
   public SystemSetting getSettings() {
     return repo.findById(1).orElseGet(() -> SystemSetting.builder()
         .id(1)
-        .primaryDomain("corp-sec.ru")
-        .allowedDomains(new String[]{"corp-sec.ru"})
+        .primaryDomain(requireEnvDomain())
+        .allowedDomains(defaultAliases(requireEnvDomain()))
         .relayEnabled(false)
         .relayHost("localhost")
         .relayPort(1025)
         .build());
+  }
+
+  /** Домен только из env; без него — явная ошибка вместо тихого чужого дефолта. */
+  private String requireEnvDomain() {
+    try {
+      return normalizeDomain(defaultEnvDomain);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "MAIL_DOMAIN не задан или некорректен — задайте его в .env (см. .env.example)", e);
+    }
   }
 
   /** Свой ли домен (основной или любой алиас, без учёта регистра). */
@@ -88,9 +109,19 @@ public class SystemSettingService implements CommandLineRunner {
     return List.copyOf(out);
   }
 
+  /**
+   * Смена настроек + пересадка внутренних адресов на новый домен.
+   * Пересаживается только то, что было внутренним (домен из старого primary/алиасов):
+   * адреса ИБ в threat_routing_rules и email всех пользователей (тот же local-part).
+   * Внешние адреса (gmail и т.п.) и история писем не трогаются никогда.
+   * Коллизия email (такой ящик уже есть) — пропуск строки с отчётом в skippedUsers,
+   * всё сохранение при этом не валится.
+   */
   @Transactional
-  public SystemSetting updateSettings(String primaryDomain, List<String> allowedDomains,
-                                      boolean relayEnabled, String relayHost, Integer relayPort) {
+  public SettingsUpdateResult updateSettings(String primaryDomain, List<String> allowedDomains,
+                                             boolean relayEnabled, String relayHost, Integer relayPort) {
+    SystemSetting current = getSettings();
+    Set<String> oldInternal = internalSet(current.getPrimaryDomain(), current.getAllowedDomains());
     String primary = normalizeDomain(primaryDomain);
     LinkedHashSet<String> set = new LinkedHashSet<>();
     set.add(primary);
@@ -99,14 +130,84 @@ public class SystemSettingService implements CommandLineRunner {
         if (d != null && !d.isBlank()) set.add(normalizeDomain(d));
       }
     }
-    SystemSetting s = getSettings();
+    SystemSetting s = current;
     s.setId(1);
     s.setPrimaryDomain(primary);
     s.setAllowedDomains(set.toArray(new String[0]));
     s.setRelayEnabled(relayEnabled);
     s.setRelayHost(relayHost == null || relayHost.isBlank() ? "localhost" : relayHost.trim());
     s.setRelayPort(relayPort == null ? 1025 : relayPort);
-    return repo.save(s);
+    repo.save(s);
+
+    int rebasedRules = 0;
+    for (ThreatRoutingRule r : rulesRepo.findAll()) {
+      if (r.getDestinationEmails() == null) continue;
+      LinkedHashSet<String> fresh = new LinkedHashSet<>();
+      boolean changed = false;
+      for (String e : r.getDestinationEmails()) {
+        String nb = rebaseInternalEmail(e, oldInternal, primary);
+        if (!nb.equals(e)) changed = true;
+        fresh.add(nb);
+      }
+      if (changed) {
+        r.setDestinationEmails(fresh.toArray(new String[0]));
+        rulesRepo.save(r);
+        rebasedRules++;
+      }
+    }
+
+    int rebasedUsers = 0;
+    List<String> skippedUsers = new ArrayList<>();
+    Set<String> taken = new HashSet<>();
+    for (User u : usersRepo.findAll()) {
+      if (u.getEmail() != null) taken.add(u.getEmail().trim().toLowerCase(Locale.ROOT));
+    }
+    for (User u : usersRepo.findAll()) {
+      String old = u.getEmail();
+      String nb = rebaseInternalEmail(old, oldInternal, primary);
+      if (nb.equals(old)) continue;
+      String key = nb.toLowerCase(Locale.ROOT);
+      if (taken.contains(key)) {
+        skippedUsers.add(old);
+        continue;
+      }
+      taken.remove(old == null ? null : old.trim().toLowerCase(Locale.ROOT));
+      taken.add(key);
+      u.setEmail(nb);
+      usersRepo.save(u);
+      rebasedUsers++;
+    }
+    if (!skippedUsers.isEmpty()) {
+      log.warn("Смена домена: пропущены ящики (такой email уже занят): {}", skippedUsers);
+    }
+    log.info("Смена домена -> {}: пересажено правил ИБ={}, ящиков={}", primary, rebasedRules, rebasedUsers);
+    return new SettingsUpdateResult(s, rebasedRules, rebasedUsers, List.copyOf(skippedUsers));
+  }
+
+  private static Set<String> internalSet(String primary, String[] allowed) {
+    LinkedHashSet<String> out = new LinkedHashSet<>();
+    if (primary != null && !primary.isBlank()) out.add(primary.trim().toLowerCase(Locale.ROOT));
+    if (allowed != null) {
+      for (String d : allowed) {
+        if (d != null && !d.isBlank()) out.add(d.trim().toLowerCase(Locale.ROOT));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Пересадка одного адреса на новый primary. Возвращает исходный, если адрес
+   * внешний (домен вне старого внутреннего набора), кривой или уже на новом домене.
+   * Тот же хелпер использует RoutingRuleSeeder при старте.
+   */
+  static String rebaseInternalEmail(String email, Set<String> oldInternal, String newPrimary) {
+    if (email == null) return null;
+    int at = email.indexOf('@');
+    if (at <= 0 || at != email.lastIndexOf('@') || at == email.length() - 1) return email;
+    String local = email.substring(0, at);
+    String dom = email.substring(at + 1).trim().toLowerCase(Locale.ROOT);
+    if (!oldInternal.contains(dom) || dom.equals(newPrimary)) return email;
+    return local + "@" + newPrimary;
   }
 
   static String normalizeDomain(String domain) {

@@ -214,6 +214,10 @@ export interface SystemSettingsDto {
   relayEnabled: boolean;
   relayHost?: string;
   relayPort?: number;
+  /** Итог смены домена (PUT): пересажено адресов ИБ/ящиков, кого пропустили. */
+  rebasedRules?: number;
+  rebasedUsers?: number;
+  skippedUsers?: string[];
 }
 
 export function getSystemSettings(token: string): Promise<SystemSettingsDto> {

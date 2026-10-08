@@ -40,7 +40,9 @@ spring:
             enable: false
 
 mail:
-  domain: ${MAIL_DOMAIN:corp-sec.ru}
+  # Обязателен: без MAIL_DOMAIN контекст не стартует (fail-fast).
+  # Захардкоженного дефолта здесь нет — значение только из env (.env → compose).
+  domain: ${MAIL_DOMAIN}
 
 smtp:
   host: ${SMTP_HOST:0.0.0.0}

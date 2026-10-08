@@ -46,7 +46,16 @@ export default function DomainSettings({ token }: { token: string }) {
       setPrimary(res.primaryDomain);
       setAliases((res.allowedDomains || []).join(', '));
       setRelayEnabled(res.relayEnabled);
-      setMsg({ text: 'Настройки почты сохранены и применены.', ok: true });
+      const moved: string[] = [];
+      if ((res.rebasedRules ?? 0) > 0) moved.push(`адреса ИБ: ${res.rebasedRules}`);
+      if ((res.rebasedUsers ?? 0) > 0) moved.push(`ящики: ${res.rebasedUsers}`);
+      const skipped = res.skippedUsers ?? [];
+      setMsg({
+        text: 'Настройки почты сохранены и применены.'
+          + (moved.length > 0 ? ` На новый домен пересажено — ${moved.join(', ')}.` : '')
+          + (skipped.length > 0 ? ` Пропущены (такой ящик уже занят): ${skipped.join(', ')}.` : ''),
+        ok: skipped.length === 0,
+      });
     } catch (err) {
       setMsg({ text: err instanceof ApiError ? err.message : 'Ошибка сети', ok: false });
     } finally {

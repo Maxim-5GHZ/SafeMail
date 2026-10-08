@@ -66,7 +66,7 @@ services:
       - "2525:2525"
       - "2587:2587"
     environment:
-      - MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
+      - MAIL_DOMAIN=${MAIL_DOMAIN:?MAIL_DOMAIN is required - copy .env.example to .env}
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-safemail}
       - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-safemail}
       - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD:-safemail}
@@ -79,6 +79,11 @@ services:
       # Исходящий relay (MVP-фейк): чистые письма и карантин уходят сюда
       - MAIL_RELAY_HOST=mailhog
       - MAIL_RELAY_PORT=1025
+      # Адреса ИБ на старте (RoutingRuleSeeder): пусто = infosec@primary-домен из БД
+      - ROUTE_TERRORISM=${ROUTE_TERRORISM:-}
+      - ROUTE_MAN_MADE=${ROUTE_MAN_MADE:-}
+      - ROUTE_ILLEGAL=${ROUTE_ILLEGAL:-}
+      - ROUTE_OTHER=${ROUTE_OTHER:-}
     restart: unless-stopped
 
   # MVP-почтовик: ловит relay-отправку gateway (SMTP :1025, веб-просмотр :8025)
@@ -105,7 +110,7 @@ services:
     environment:
       # Серверный прокси /backend/* -> gateway (браузер ходит same-origin, CORS не нужен)
       - BACKEND_URL=http://gateway:8080
-      - NEXT_PUBLIC_MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
+      - NEXT_PUBLIC_MAIL_DOMAIN=${MAIL_DOMAIN:?MAIL_DOMAIN is required - copy .env.example to .env}
     volumes:
       - ./frontend:/app
       - /app/node_modules

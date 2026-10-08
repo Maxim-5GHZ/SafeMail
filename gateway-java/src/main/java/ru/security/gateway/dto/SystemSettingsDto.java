@@ -27,4 +27,12 @@ public class SystemSettingsDto {
   @Min(value = 1, message = "Порт 1..65535")
   @Max(value = 65535, message = "Порт 1..65535")
   private Integer relayPort;
+
+  /** Итог смены домена (PUT): сколько адресов ИБ/ящиков пересажено, кого пропустили. */
+  @Builder.Default
+  private int rebasedRules = 0;
+  @Builder.Default
+  private int rebasedUsers = 0;
+  @Builder.Default
+  private java.util.List<String> skippedUsers = java.util.List.of();
 }

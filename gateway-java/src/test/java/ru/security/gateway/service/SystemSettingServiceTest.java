@@ -11,15 +11,22 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import ru.security.gateway.domain.SystemSetting;
+import ru.security.gateway.domain.ThreatCategory;
+import ru.security.gateway.domain.ThreatRoutingRule;
+import ru.security.gateway.domain.User;
 import ru.security.gateway.repository.SystemSettingRepository;
+import ru.security.gateway.repository.ThreatRoutingRuleRepository;
+import ru.security.gateway.repository.UserRepository;
 
 /** Домены/алиасы/валидация настроек почты (приём с Gmail без гаданий о поддомене). */
 @ExtendWith(MockitoExtension.class)
 class SystemSettingServiceTest {
   @Mock SystemSettingRepository repo;
+  @Mock ThreatRoutingRuleRepository rulesRepo;
+  @Mock UserRepository usersRepo;
 
   private SystemSettingService svc(String envDomain) {
-    SystemSettingService s = new SystemSettingService(repo);
+    SystemSettingService s = new SystemSettingService(repo, rulesRepo, usersRepo);
     ReflectionTestUtils.setField(s, "defaultEnvDomain", envDomain);
     return s;
   }
@@ -82,11 +89,49 @@ class SystemSettingServiceTest {
   void updateKeepsPrimaryFirst() {
     when(repo.findById(1)).thenReturn(Optional.of(stored()));
     when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    when(rulesRepo.findAll()).thenReturn(List.of());
+    when(usersRepo.findAll()).thenReturn(List.of());
     SystemSetting out = svc("x").updateSettings("HotCodeBand.RU",
-        List.of("mail.hotcodeband.ru", " mail.hotcodeband.ru ", "hotcodeband.ru"), true, "smtp.x.ru", 587);
+        List.of("mail.hotcodeband.ru", " mail.hotcodeband.ru ", "hotcodeband.ru"), true, "smtp.x.ru", 587)
+        .settings();
     assertEquals("hotcodeband.ru", out.getPrimaryDomain());
     assertEquals(List.of("hotcodeband.ru", "mail.hotcodeband.ru"),
         List.of(out.getAllowedDomains()));
     assertTrue(out.isRelayEnabled());
+  }
+
+  @Test
+  void updateRebasesInternalRuleAndUserEmails() {
+    SystemSetting old = SystemSetting.builder().id(1).primaryDomain("old.ru")
+        .allowedDomains(new String[]{"old.ru", "mail.old.ru"})
+        .relayEnabled(false).relayHost("localhost").relayPort(1025).build();
+    when(repo.findById(1)).thenReturn(Optional.of(old));
+    when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    ThreatRoutingRule rule = ThreatRoutingRule.builder().category(ThreatCategory.TERRORISM)
+        .destinationEmails(new String[]{"infosec@old.ru", "soc@gmail.com"}).build();
+    when(rulesRepo.findAll()).thenReturn(List.of(rule));
+    User bob = User.builder().username("bob").email("bob@mail.old.ru").passwordHash("h").build();
+    User dup = User.builder().username("a2").email("a@old.ru").passwordHash("h").build();
+    User busy = User.builder().username("a1").email("a@new.ru").passwordHash("h").build();
+    when(usersRepo.findAll()).thenReturn(List.of(bob, dup, busy));
+
+    var res = svc("x").updateSettings("new.ru", List.of("new.ru"), false, "localhost", 1025);
+
+    assertArrayEquals(new String[]{"infosec@new.ru", "soc@gmail.com"}, rule.getDestinationEmails());
+    assertEquals("bob@new.ru", bob.getEmail());
+    assertEquals("a@old.ru", dup.getEmail()); // коллизия — пропуск
+    assertEquals(List.of("a@old.ru"), res.skippedUsers());
+    assertEquals(1, res.rebasedRules());
+    assertEquals(1, res.rebasedUsers());
+  }
+
+  @Test
+  void rebaseKeepsExternalAndBroken() {
+    var old = java.util.Set.of("old.ru", "mail.old.ru");
+    assertEquals("x@new.ru", SystemSettingService.rebaseInternalEmail("x@old.ru", old, "new.ru"));
+    assertEquals("x@new.ru", SystemSettingService.rebaseInternalEmail("x@new.ru", old, "new.ru"));
+    assertEquals("soc@gmail.com", SystemSettingService.rebaseInternalEmail("soc@gmail.com", old, "new.ru"));
+    assertEquals("кривой", SystemSettingService.rebaseInternalEmail("кривой", old, "new.ru"));
+    assertNull(SystemSettingService.rebaseInternalEmail(null, old, "new.ru"));
   }
 }

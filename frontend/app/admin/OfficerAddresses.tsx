@@ -113,7 +113,7 @@ export default function OfficerAddresses({ token }: { token: string }) {
                           value={draft}
                           onChange={(e) => setDraft(e.target.value)}
                           rows={Math.min(5, Math.max(2, draft.split('\n').length))}
-                          placeholder="soc@corp-sec.ru — по одному на строке (можно через запятую)"
+                          placeholder="soc@ваш-домен — по одному на строке (можно через запятую)"
                           className="textarea textarea-bordered textarea-xs w-full font-mono"
                         />
                       ) : (

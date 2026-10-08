@@ -6,7 +6,8 @@ import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
 import { ApiError, getPublicConfig } from '@/lib/api';
 import { LogoFull } from '@/components/Logo';
 
-const FALLBACK_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? 'corp-sec.ru';
+/** Только из env; пусто — покажем хинт, пока нет ответа /public/config. */
+const FALLBACK_DOMAIN = process.env.NEXT_PUBLIC_MAIL_DOMAIN ?? '';
 
 export default function LoginPage() {
   const { ready, token, login, register } = useAuth();
@@ -96,7 +97,11 @@ export default function LoginPage() {
               className="px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-300"
             />
             <div className="text-xs text-gray-500">
-              Ящик будет создан автоматически: <b>{username || 'логин'}@{domain}</b>
+              {domain ? (
+                <>Ящик будет создан автоматически: <b>{username || 'логин'}@{domain}</b></>
+              ) : (
+                <>Почтовый домен не настроен — нет ответа от сервера, регистрация недоступна</>
+              )}
             </div>
           </>
         )}
