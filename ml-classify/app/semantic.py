@@ -29,7 +29,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 import httpx
 
-from .prototypes import CATEGORIES, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
+from .prototypes import CATEGORIES, PROTOTYPES, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
 logger = logging.getLogger("safemail.classify.semantic")
 
@@ -40,7 +40,13 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Бюджет под gateway readTimeout 15с: 8с Qwen + ~5.5с GigaChat.
 QWEN_TIMEOUT_S = 8.0
 GIGA_TIMEOUT_S = 5.5
-# Пулы запросов: 6 параллельных Qwen + 1 зарезервированный GigaChat.
+# Пулы запросов: 4 параллельных ONNX (под 4 ядра сервера) + 6 Qwen
+# + 1 зарезервированный GigaChat.
+ONNX_MAX_SLOTS = 4
+ONNX_THREADS = 2  # intra_op внутри сессии (inter=1)
+ONNX_MAX_TOKENS = 512  # предел позиций rubert
+ONNX_TEXT_LIMIT = 2000  # символов на вход (как у внешних провайдеров)
+ONNX_MARGIN = 0.08  # маржа победы угрозы над NONE (против флипов на шуме)
 QWEN_MAX_SLOTS = 6
 GIGA_MAX_SLOTS = 1
 TEXT_LIMIT = 2000
@@ -134,7 +140,8 @@ class ProviderError(Exception):
         self.reason = reason
 
 
-# Семафоры пулов: 6 параллельных Qwen + 1 GigaChat (fallback не ждёт очередь).
+# Семафоры пулов: 4 параллельных ONNX + 6 Qwen + 1 GigaChat.
+_ONNX_SEM = threading.Semaphore(ONNX_MAX_SLOTS)
 _QWEN_SEM = threading.Semaphore(QWEN_MAX_SLOTS)
 _GIGA_SEM = threading.Semaphore(GIGA_MAX_SLOTS)
 # Общий пул потоков (7 = 6+1): нужен, чтобы ограничить время GigaChat-вызова,
@@ -161,6 +168,113 @@ def _error_snippet(resp: httpx.Response, limit: int = 300) -> str:
     if req_id:
         return f"{body} | x-request-id={req_id}" if body else f"x-request-id={req_id}"
     return body or "empty-body"
+
+
+def _resolve_model_dir() -> str:
+    """Каталог с model.onnx + tokenizer.json: env MODEL_DIR, иначе стандартные."""
+    cands = [
+        (os.getenv("MODEL_DIR", "") or "").strip(),
+        "./models/rubert-tiny2",
+        "ml-classify/models/rubert-tiny2",
+    ]
+    for c in cands:
+        if c and os.path.isfile(os.path.join(c, "model.onnx")):
+            return c
+    return ""
+
+
+class OnnxRubertProvider:
+    """Primary: локальный rubert-tiny2 через ONNX (CPU, офлайн, детерминизм).
+
+    Эмбеддинг письма (mean-pooling по attention-маске) + косинус против
+    эталонов PROTOTYPES. Интерфейс как у внешних: classify(text) -> (cat, conf).
+    """
+
+    name = "onnx"
+
+    def __init__(self) -> None:
+        self._session = None
+        self._tok = None
+        self._protos: dict[str, list] = {}
+        self._dim = 0
+        self.configured = False
+
+    @property
+    def available(self) -> bool:
+        return self.configured and self._session is not None
+
+    def configure(self) -> bool:
+        """Загрузка модели без сети (веса запечены в образ stage 1)."""
+        try:
+            import numpy as _np  # noqa: F401
+            import onnxruntime as _ort
+            from tokenizers import Tokenizer as _Tok
+        except ImportError:
+            print("[SEMANTIC] onnxruntime/tokenizers не установлены — ONNX выключен",
+                  flush=True)
+            return False
+        model_dir = _resolve_model_dir()
+        if not model_dir:
+            print("[SEMANTIC] model.onnx не найден — ONNX выключен", flush=True)
+            return False
+        try:
+            so = _ort.SessionOptions()
+            so.intra_op_num_threads = ONNX_THREADS
+            so.inter_op_num_threads = 1
+            self._session = _ort.InferenceSession(
+                os.path.join(model_dir, "model.onnx"), sess_options=so,
+                providers=["CPUExecutionProvider"])
+            self._tok = _Tok.from_file(os.path.join(model_dir, "tokenizer.json"))
+            self._tok.enable_truncation(max_length=ONNX_MAX_TOKENS)
+            self._protos = {c: [self._embed(t) for t in ts]
+                            for c, ts in PROTOTYPES.items()}
+            self._dim = self._protos["NONE"][0].shape[0]
+        except Exception as ex:
+            print(f"[SEMANTIC] Ошибка загрузки ONNX ({type(ex).__name__}) — выключен",
+                  flush=True)
+            self._session = None
+            self.configured = False
+            return False
+        self.configured = True
+        return True
+
+    def _embed(self, text: str):
+        """Нормированный эмбеддинг текста (mean-pooling по маске)."""
+        import numpy as _np
+        enc = self._tok.encode((text or "")[:ONNX_TEXT_LIMIT])
+        ids = _np.array([enc.ids], dtype=_np.int64)
+        mask = _np.array([enc.attention_mask], dtype=_np.int64)
+        zeros = _np.zeros_like(ids)
+        (hidden,) = self._session.run(
+            None, {"input_ids": ids, "attention_mask": mask,
+                   "token_type_ids": zeros})[:1]
+        m = mask.astype(_np.float32)
+        vec = (hidden[0] * m[0][:, None]).sum(axis=0) / max(m.sum(), 1e-6)
+        n = float(_np.linalg.norm(vec)) or 1.0
+        return (vec / n).astype(_np.float32)
+
+    def classify(self, text: str) -> tuple[str, float]:
+        """Максимум косинуса по эталонам; пусто/мусор — строгий fallback дальше.
+        Угроза побеждает только с маржой над NONE (>= ONNX_MARGIN): у крошки
+        косинусы сжаты, пограничная химия («хлор для бассейна» vs «солью химию»)
+        иначе флипает от перефразировки. Спорное — в NONE, дальше решает
+        эвристика (детерминирована) и вето."""
+        import numpy as _np
+        assert self._session is not None
+        if not (text or "").strip():
+            raise ProviderError("empty")
+        vec = self._embed(text)
+        best, best_score = "NONE", -1.0
+        for cat in CATEGORIES:
+            for pv in self._protos.get(cat, []):
+                s = float(_np.dot(vec, pv))
+                if s > best_score:
+                    best, best_score = cat, s
+        none_s = max(float(_np.dot(vec, pv)) for pv in self._protos.get("NONE", []))
+        if best != "NONE" and best_score - none_s < ONNX_MARGIN:
+            return ("NONE", round(min(max(none_s, 0.0), 1.0), 4))
+        conf = min(max(best_score, 0.0), 1.0)
+        return (best, round(conf, 4))
 
 
 class QwenOpenRouterProvider:
@@ -313,23 +427,28 @@ class GigaChatProvider:
 
 
 class SemanticModel:
-    """Роутер Qwen (primary) -> GigaChat (fallback) под старым интерфейсом."""
+    """Роутер ONNX (primary, офлайн) -> Qwen -> GigaChat под старым интерфейсом."""
 
     def __init__(self) -> None:
+        self._onnx = OnnxRubertProvider()
         self._qwen = QwenOpenRouterProvider()
         self._giga = GigaChatProvider()
         self.loaded = False
         self._lock = threading.Lock()
-        self._counters = {"qwen_ok": 0, "qwen_fallback": 0,
+        self._counters = {"onnx_ok": 0, "onnx_fallback": 0,
+                          "qwen_ok": 0, "qwen_fallback": 0,
                           "gigachat_ok": 0, "both_fail": 0}
         self._local = threading.local()
 
     @property
     def available(self) -> bool:
-        return self.loaded and (self._qwen.available or self._giga.available)
+        return self.loaded and (self._onnx.available or self._qwen.available
+                                or self._giga.available)
 
     @property
     def active_name(self) -> str:
+        if self._onnx.available:
+            return "rubert-tiny2-onnx"
         if self._qwen.available:
             return "qwen-2.5-7b"
         if self._giga.available:
@@ -353,15 +472,20 @@ class SemanticModel:
     def load(self, model_dir: str | None = None) -> bool:
         """Инициализация без сетевых вызовов (сеть — только в explain)."""
         _ = model_dir  # остался для совместимости lifespan
+        has_onnx = self._onnx.configure()
         has_qwen = self._qwen.configure()
         has_giga = self._giga.configure()
         self.loaded = True
+        if not has_onnx:
+            print("[SEMANTIC] ONNX недоступен — дальше по цепочке внешних LLM",
+                  flush=True)
         if not has_qwen:
             print("[SEMANTIC] OPENROUTER_API_KEY не задан — Qwen выключен", flush=True)
         if not has_giga:
             print("[SEMANTIC] GIGACHAT_API_KEY не задан — GigaChat-fallback выключен", flush=True)
-        if has_qwen or has_giga:
-            print(f"[SEMANTIC] провайдеры: qwen={'on' if has_qwen else 'off'}, "
+        if has_onnx or has_qwen or has_giga:
+            print(f"[SEMANTIC] провайдеры: onnx={'on' if has_onnx else 'off'}, "
+                  f"qwen={'on' if has_qwen else 'off'}, "
                   f"gigachat={'on' if has_giga else 'off'}", flush=True)
             return True
         print("[SEMANTIC] нет провайдеров — работает rule-based fallback", flush=True)
@@ -406,6 +530,25 @@ class SemanticModel:
         if not self.available or not (text or "").strip():
             return ("NONE", 0.0, 0.0, None)
         text_len = len(text or "")
+        if self._onnx.available:
+            with _ONNX_SEM:
+                t0 = time.perf_counter()
+                try:
+                    cat, conf = self._onnx.classify(text)
+                except Exception as ex:
+                    ms = int((time.perf_counter() - t0) * 1000)
+                    self._bump("onnx_fallback")
+                    logger.warning("[SEMANTIC] onnx fallback -> qwen "
+                                   "| reason=%s | onnx_ms=%d | text_len=%d",
+                                   f"{type(ex).__name__}:{ex}", ms, text_len)
+                else:
+                    ms = int((time.perf_counter() - t0) * 1000)
+                    self._bump("onnx_ok")
+                    logger.debug("[SEMANTIC] onnx ok | cat=%s conf=%.2f | ms=%d",
+                                 cat, conf, ms)
+                    self._local.provider = "onnx"
+                    none_score = 0.9 if cat == "NONE" else round(1.0 - conf, 4)
+                    return (cat, conf, none_score, None)
         if self._qwen.available:
             with _QWEN_SEM:
                 t0 = time.perf_counter()

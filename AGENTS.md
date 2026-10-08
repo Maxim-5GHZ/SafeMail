@@ -50,9 +50,20 @@ ENRICHED,ANALYZED,DELIVERED,REROUTED,FORWARDED,FAILED` (`FORWARDED` — вруч
 - Hairpin (`MailRoutingService`): получатель на своём домене
   (`SystemSettingService.isLocalDomain`, основной + алиасы) → внутрь
   пайплайна; чужой домен → сразу в relay без ИИ.
-- SLM-лимит: **4 ГБ RAM**. `ml-classify`: `rubert-tiny2` (ONNX, 116 МБ, CPU,
-  ~222 МБ RAM), веса запечены в образ (multi-stage Dockerfile: stage 1 экспортирует
-  через torch+optimum, в рантайме только `numpy/onnxruntime/transformers`).
+- SLM-лимит: **4 ГБ RAM**. `ml-classify`: локальный `rubert-tiny2` (ONNX,
+  116 МБ, CPU, ~200 МБ RSS всего контейнера — факт `docker stats`),
+  веса запекаются в образ multi-stage Dockerfile (stage 1: torch+optimum,
+  экспорт из HF — интернет нужен только на сборке; рантайм slim без torch,
+  токенизация через `tokenizers` напрямую, `transformers` не нужен).
+  Сборка только Docker-пути (`docker compose build ml-classify`), ручного
+  запекания нет; `models/` в `.gitignore`. Провайдер `OnnxRubertProvider` —
+  primary (mean-pooling + косинус к `PROTOTYPES`, пороги `TH=0.65/MARGIN=0.05`
+  из прототипа 12/15; победа угрозы только с маржой `ONNX_MARGIN=0.08` над NONE —
+  иначе шумовая полоса 0.55–0.65 флипает вердикт от пробелов/регистра;
+  спорное уходит в NONE и дальше решает эвристика+вето), цепочка
+  `onnx -> qwen -> gigachat` (счётчики `onnx_ok/onnx_fallback` в `/health.semantic`,
+  флаг `semantic-provider:onnx`). JVM gateway поджата `-Xmx768m` через
+  `JDK_JAVA_OPTIONS` (иначе OOM на 4-гиговом сервере).
   `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает), семантика ловит
   парафразы при `NONE` (`TH=0.65`, `MARGIN=0.05`, флаг `semantic:<cat>:<score>`).
   Одиночное срабатывание семантики при чистом `NONE` подтверждается вторым
@@ -181,14 +192,14 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   leet-цифры — то же правило, что в enrich (только внутри букв).
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
-  Семантика — `app/semantic.py`: Qwen через OpenRouter (primary,
-  `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL` (дефолт `qwen/qwen-2.5-7b-instruct`),
-  `httpx`, таймаут 8с) +
+  Семантика — `app/semantic.py`: локальный ONNX (`OnnxRubertProvider`, primary,
+  детерминирован побайтово, офлайн) + Qwen через OpenRouter
+  (`OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL`, `httpx`, таймаут 8с) +
   GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Конкурентный всплеск
-  OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 6+1
-  (семафоры + keep-alive): каждый `explain()` сначала в Qwen, при падении —
-  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Qwen
-  логируется warning-строкой `qwen fallback -> gigachat | reason | ms`
+  OpenRouter режет `403/429` — один ретрай через 1с, потом fallback. Пулы запросов 4+6+1
+  (семафоры + keep-alive): каждый `explain()` сначала в ONNX, при падении —
+  Qwen, потом один заход в GigaChat; все упали — `(NONE,0,0)` fail-closed. Падение ONNX/Qwen
+  логируется warning-строкой `onnx/qwen fallback -> ... | reason | ms`
   (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
   reason при HTTP-ошибках (403/429/5xx) несёт сниппет тела ответа OpenRouter
   (первые 300 символов + `x-request-id`, `_error_snippet`) — иначе причина 403

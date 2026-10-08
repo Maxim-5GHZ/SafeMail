@@ -69,6 +69,9 @@ services:
       - "2525:2525"
       - "2587:2587"
     environment:
+      # Лимит heap JVM (без него на 4-гиговом сервере рядом с PG+ML+фронтом возможен OOM).
+      # JDK_JAVA_OPTIONS подхватывается штатным java-лаунчером, код/Dockerfile не меняем.
+      - JDK_JAVA_OPTIONS=-Xmx768m
       - MAIL_DOMAIN=${MAIL_DOMAIN:?MAIL_DOMAIN is required - copy .env.example to .env}
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB:-safemail}
       - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER:-safemail}

@@ -317,8 +317,10 @@ def run_startup_tests() -> None:
     failed += run_veto_startup_tests()
     # Роутер Qwen->GigaChat: fallback и его логи (стабы провайдеров, без сети).
     failed += run_router_startup_tests()
-    # Сниппет тела error-ответа OpenRouter (диагностика 403/429/5xx в логе).
+    # Сниппет тела error-ответа провайдера (диагностика 403/429/5xx в логе).
     failed += run_error_snippet_tests()
+    # Локальная SLM (ONNX): самомэтч эталонов, чистые — NONE.
+    failed += run_onnx_startup_tests()
     # Подтверждение одиночного срабатывания семантики (стаб explain со счётчиком).
     failed += run_confirm_startup_tests()
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
@@ -412,6 +414,9 @@ def run_router_startup_tests() -> int:
     failed = 0
     model = SEMANTIC_MODEL
     orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
+    orig_o = model._onnx
+    # ONNX глушим: тесты роутера проверяют цепочку qwen->gigachat,
+    # живой ONNX в образе иначе перехватит explain первым (он primary).
     records: list[str] = []
 
     class _Cap(_logging.Handler):
@@ -439,6 +444,8 @@ def run_router_startup_tests() -> int:
 
     try:
         model.loaded = True
+        model._onnx = _Fake(error=_sem.ProviderError("off"))  # type: ignore
+        model._onnx.available = False
         # 1. Qwen падает -> GigaChat + warning-лог с причиной.
         model._qwen = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
         model._giga = _Fake(result=("OTHER_THREAT", 0.8))  # type: ignore
@@ -476,6 +483,7 @@ def run_router_startup_tests() -> int:
             failed += 1
     finally:
         model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        model._onnx = orig_o  # type: ignore
         with model._lock:
             for k in model._counters:
                 model._counters[k] = 0
@@ -521,6 +529,9 @@ def run_error_snippet_tests() -> int:
     # reason со сниппетом доходит до warning-лога роутера (стаб classify).
     model = SEMANTIC_MODEL
     orig_m, orig_g, orig_loaded = model._qwen, model._giga, model.loaded
+    orig_o = model._onnx
+    # ONNX глушим: тесты роутера проверяют цепочку qwen->gigachat,
+    # живой ONNX в образе иначе перехватит explain первым (он primary).
     records: list[str] = []
 
     class _Cap(_logging.Handler):
@@ -545,6 +556,8 @@ def run_error_snippet_tests() -> int:
 
     try:
         model.loaded = True
+        model._onnx = _Fake(error=_sem.ProviderError("off"))  # type: ignore
+        model._onnx.available = False
         model._qwen = _Fake(error=_sem.ProviderError(  # type: ignore
             "http_403:Access denied for region | x-request-id=req-1"))
         model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
@@ -556,10 +569,52 @@ def run_error_snippet_tests() -> int:
             failed += 1
     finally:
         model._qwen, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        model._onnx = orig_o  # type: ignore
         slog.removeHandler(cap)
         slog.setLevel(old_level)
     if not failed:
         print("[SNIPPET TEST] тело 403 в логе, обрезка и request-id в порядке", flush=True)
+    return failed
+
+
+def run_onnx_startup_tests() -> int:
+    """Локальная SLM (rubert-tiny2, ONNX): детерминировано, без сети.
+    Модели нет (хост без сборки) — skip, fallback легален; в образе веса
+    запечены stage 1, там тесты идут по-настоящему.
+    1. Самомэтч эталонов: каждый текст PROTOTYPES — в свою категорию.
+    2. Чистые эталоны — строго NONE (чистая почта не блокируется).
+    3. Размерность эмбеддинга консистентна; пустой текст — исключение."""
+    from . import semantic as _sem
+    from .prototypes import PROTOTYPES
+    failed = 0
+    prov = SEMANTIC_MODEL._onnx
+    if not prov.available:
+        print("[ONNX TEST] модели нет — skip (rule-based fallback)", flush=True)
+        return 0
+    dims = {prov._embed(t).shape[0] for ts in PROTOTYPES.values() for t in ts}
+    if len(dims) != 1 or next(iter(dims)) <= 0:
+        print(f"[TEST FAIL] onnx dims: {dims}", flush=True)
+        failed += 1
+    for cat, texts in PROTOTYPES.items():
+        for t in texts:
+            try:
+                got, _ = prov.classify(t)
+            except Exception as ex:
+                print(f"[TEST FAIL] onnx classify raised on {cat}: {ex}", flush=True)
+                failed += 1
+                continue
+            if got != cat:
+                print(f"[TEST FAIL] onnx self-match '{t[:40]}' "
+                      f"expected={cat} got={got}", flush=True)
+                failed += 1
+    try:
+        prov.classify("   ")
+        print("[TEST FAIL] onnx empty accepted", flush=True)
+        failed += 1
+    except _sem.ProviderError:
+        pass
+    if not failed:
+        print("[ONNX TEST] самомэтч эталонов и чистые NONE в порядке", flush=True)
     return failed
 
 

@@ -89,12 +89,12 @@
    пайплайна) на адреса правила категории → `REROUTED`. При недоступности ML —
    fallback, SMTP-сессия не страдает (тяжёлое — в поллере).
 
-**SLM**: вместо локальной модели — внешние LLM (`ml-classify/app/semantic.py`,
-ключи только в `.env`, без ключей/сети — rule-based fallback, fail-closed):
-Qwen через OpenRouter (primary) + GigaChat (fallback при падении Qwen,
-пулы 6+1, warning-лог `qwen fallback -> gigachat | reason | ms`).
-Промпт просит `NONE` «с низкой уверенностью», поэтому raw у нормы ~0.05 и в порогах
-не участвует. `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
+**SLM**: локальный `rubert-tiny2` (ONNX, CPU, ~200 МБ — primary, офлайн,
+детерминирован) + Qwen через OpenRouter + GigaChat (fallback-цепочка,
+ключи только в `.env`, без провайдеров — rule-based fallback, fail-closed):
+цепочка `onnx -> qwen -> gigachat` (пулы 4+6+1, счётчики в `/health.semantic`).
+Промпт внешних LLM просит `NONE` «с низкой уверенностью», поэтому их raw у нормы
+~0.05 и в порогах не участвует; у ONNX none-скор нормируется обёрткой (0.9 при NONE). `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
 семантика ловит парафразы при `NONE` (`0.65/0.05`, флаг `semantic:<cat>:<score>`);
 слабая эвристика (`<0.75`, без stopword/profanity) гасится разборчивым `NONE`
 семантики (none `≥0.85`, флаг `semantic-veto:<cat>:<score>` — одиночный бытовой

@@ -1,7 +1,10 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 httpx==0.28.1
-# LLM-инференс: Mistral через OpenRouter (primary) + GigaChat (fallback).
-# Локальной SLM/ONNX нет: torch/onnxruntime/transformers не нужны,
-# лимит 4 ГБ RAM автоматически соблюдён. Без ключей — rule-based fallback.
+# Локальная SLM (primary): rubert-tiny2 через ONNX (CPU, ~222 МБ RAM).
+# transformers/torch НЕ нужны: токенизация — tokenizers напрямую по tokenizer.json.
+onnxruntime==1.20.1
+tokenizers==0.21.0
+# Внешние LLM (fallback при недоступности ONNX): Qwen через OpenRouter + GigaChat.
+# (YandexGPT не подошёл: content-filter отказывает в разборе угроз.)
 gigachat==0.1.28
