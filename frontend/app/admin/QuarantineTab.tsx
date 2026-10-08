@@ -1,20 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshCw, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ApiError, getMessage, listMessages } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import type { AdminStats, MessageDto, MessageStatus, Page, ThreatCategory } from '@/lib/types';
 import EngineerDrawer from './EngineerDrawer';
-import { CloseIcon } from '@/components/icons';
-
 import { CATS, categoryLabel, severityDotClass } from '@/lib/labels';
 
 type Box = 'REROUTED' | 'FORWARDED';
+const BOXES: Box[] = ['REROUTED', 'FORWARDED'];
 
 function VerdictBadge({ v }: { v: ThreatCategory | null }) {
-  if (!v || v === 'NONE') return <span className="text-sm text-gray-400">Чисто</span>;
+  if (!v || v === 'NONE') return <span className="text-sm text-slate-400">Чисто</span>;
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm text-gray-800 whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 text-sm text-slate-800 whitespace-nowrap">
       <span className={`inline-block w-2 h-2 rounded-full ${severityDotClass(v)}`} aria-hidden />
       {categoryLabel(v)}
     </span>
@@ -26,8 +26,8 @@ function TableSkeleton() {
     <>
       {[0, 1, 2, 3, 4].map((i) => (
         <tr key={i}>
-          <td colSpan={5}>
-            <div className="h-5 rounded bg-base-200 animate-pulse" />
+          <td colSpan={5} className="px-4 py-2">
+            <div className="h-5 rounded bg-white/60 animate-pulse" />
           </td>
         </tr>
       ))}
@@ -35,10 +35,6 @@ function TableSkeleton() {
   );
 }
 
-/**
- * Вкладка «Карантин»: два ящика (в карантине / отправлено в ИБ) + чипы категорий
- * со счётчиками активного ящика + таблица + шторка. Свой polling списка 10с.
- */
 export default function QuarantineTab({
   token,
   stats,
@@ -47,7 +43,6 @@ export default function QuarantineTab({
 }: {
   token: string;
   stats: AdminStats | null;
-  /** Вызвать после release/forward: статистика обновится следующим тиком. */
   onStatsRefresh: () => void;
   onAuthFail: (e: unknown) => boolean;
 }) {
@@ -82,14 +77,13 @@ export default function QuarantineTab({
       if (ctl.signal.aborted) return;
       setData(d);
       setError(null);
-      // Шторка не должна показывать устаревший снапшот после тихого рефреша.
       const cur = openRef.current;
       if (cur && d.content.some((m) => m.id === cur.id)) {
         try {
           const fresh = await getMessage(token, cur.id, ctl.signal);
           if (!ctl.signal.aborted) setOpen(fresh);
         } catch {
-          /* шторка остаётся на старом снапшоте до следующего тика */
+          /* оставляем предыдущий снапшот */
         }
       }
     } catch (e) {
@@ -97,7 +91,6 @@ export default function QuarantineTab({
       if (onAuthFail(e)) return;
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     }
-  // reloadToken не читается внутри load — он лишь дёргает эффект ниже через loadRef.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, box, category, page, reloadToken, onAuthFail]);
 
@@ -139,24 +132,58 @@ export default function QuarantineTab({
   const counts = box === 'REROUTED' ? (stats?.byCategoryRerouted ?? {}) : (stats?.byCategoryForwarded ?? {});
   const boxCount = (s: Box) => stats?.byStatus[s] ?? 0;
 
+  const boxIdx = BOXES.indexOf(box);
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="tabs tabs-boxed" role="tablist" aria-label="Ящик">
-          {(['REROUTED', 'FORWARDED'] as Box[]).map((b) => (
-            <button
-              key={b}
-              role="tab"
-              aria-selected={box === b}
-              onClick={() => setBox(b)}
-              className={`tab ${box === b ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}
-            >
-              {b === 'REROUTED' ? 'В карантине' : 'Отправлено в ИБ'} · <b>{boxCount(b)}</b>
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Ящики со скользящей подложкой */}
+        <div className="inline-flex p-1 rounded-full
+                        bg-white/40 backdrop-blur-md border border-white/60
+                        shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(0,0,0,0.06)]">
+          <div
+            className="relative inline-grid"
+            style={{ gridTemplateColumns: `repeat(${BOXES.length}, minmax(0, 1fr))` }}
+          >
+            <span
+              aria-hidden
+              className="absolute top-0 bottom-0 left-0 rounded-full
+                         bg-white/95
+                         shadow-[0_2px_6px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.9)]
+                         transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
+              style={{
+                width: `calc(100% / ${BOXES.length})`,
+                transform: `translateX(${boxIdx * 100}%)`,
+              }}
+            />
+
+            {BOXES.map((b) => {
+              const active = box === b;
+              return (
+                <button
+                  key={b}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setBox(b)}
+                  className={`relative z-10 inline-flex items-center justify-center gap-1.5 px-4 py-1.5
+                              text-sm whitespace-nowrap
+                              transition-colors duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                                active
+                                  ? 'text-slate-900 font-medium'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                >
+                  <span>{b === 'REROUTED' ? 'В карантине' : 'Отправлено в ИБ'}</span>
+                  <span className="font-bold shrink-0">{boxCount(b)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <span className="text-xs text-gray-500 ml-1">клик по категории — фильтр таблицы</span>
-        <span className="ml-auto flex gap-1 flex-wrap">
+
+        <span className="ml-1 text-xs text-slate-500">клик по категории — фильтр таблицы</span>
+
+        <span className="flex flex-wrap gap-1 ml-auto">
           {CATS.map((c) => {
             const n = counts[c] ?? 0;
             const active = category === c;
@@ -164,16 +191,17 @@ export default function QuarantineTab({
               <button
                 key={c}
                 onClick={() => setCategory(active ? '' : c)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs cursor-pointer ${
-                  active
-                    ? 'bg-primary text-white border-primary font-medium'
-                    : 'border-base-300 bg-base-100 hover:bg-base-200 text-gray-700'
-                }`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs
+                            transition-all duration-200 ${
+                              active
+                                ? 'bg-blue-600 text-white border-blue-600 font-medium shadow-[0_2px_6px_rgba(37,99,235,0.30)]'
+                                : 'border-white/60 bg-white/40 backdrop-blur-sm hover:bg-white/70 text-slate-700'
+                            }`}
                 title={active ? `Сбросить фильтр «${categoryLabel(c)}»` : `Показать «${categoryLabel(c)}» в таблице`}
               >
                 <span className={`inline-block w-2 h-2 rounded-full ${active ? 'bg-white' : severityDotClass(c)}`} aria-hidden />
                 {categoryLabel(c)} · <b>{n}</b>
-                {active && <span aria-hidden className="inline-flex"><CloseIcon className="w-3 h-3" /></span>}
+                {active && <X className="w-3 h-3" />}
               </button>
             );
           })}
@@ -181,20 +209,23 @@ export default function QuarantineTab({
       </div>
 
       {error && (
-        <div className="alert alert-error">
-          <span>{error}</span>
+        <div className="px-3 py-2 text-sm border rounded-lg bg-rose-50/80 backdrop-blur-sm border-rose-200/60 text-rose-800">
+          {error}
         </div>
       )}
 
-      <div className="overflow-x-auto bg-base-100 rounded-xl shadow">
-        <table className="table table-sm">
+      <div className="overflow-x-auto rounded-2xl
+                      bg-white/40 backdrop-blur-2xl backdrop-saturate-150
+                      border border-white/50
+                      shadow-[0_8px_24px_rgba(31,38,135,0.08),inset_0_1px_0_rgba(255,255,255,0.85)]">
+        <table className="w-full text-sm">
           <thead>
-            <tr>
-              <th>Дата/время</th>
-              <th>От</th>
-              <th>Кому предназначалось</th>
-              <th>Тема</th>
-              <th>Вердикт</th>
+            <tr className="text-slate-500 text-[10px] uppercase tracking-wider border-b border-white/50">
+              <th className="px-4 py-3 font-bold text-left">Дата/время</th>
+              <th className="px-4 py-3 font-bold text-left">От</th>
+              <th className="px-4 py-3 font-bold text-left">Кому предназначалось</th>
+              <th className="px-4 py-3 font-bold text-left">Тема</th>
+              <th className="px-4 py-3 font-bold text-left">Вердикт</th>
             </tr>
           </thead>
           <tbody>
@@ -202,12 +233,15 @@ export default function QuarantineTab({
               <TableSkeleton />
             ) : data.content.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center text-gray-400 py-4">
+                <td colSpan={5} className="py-8 text-center text-slate-400">
                   {category ? (
                     <span className="inline-flex items-center gap-2">
                       {box === 'REROUTED' ? 'В карантине нет писем категории' : 'В ИБ не отправляли писем категории'}{' '}
                       {categoryLabel(category)}
-                      <button onClick={() => setCategory('')} className="btn btn-xs btn-outline">
+                      <button
+                        onClick={() => setCategory('')}
+                        className="px-2 py-1 text-xs transition border rounded-lg bg-white/70 border-white/70 hover:bg-white/90"
+                      >
                         Показать всё
                       </button>
                     </span>
@@ -220,12 +254,16 @@ export default function QuarantineTab({
               </tr>
             ) : (
               data.content.map((m) => (
-                <tr key={m.id} onClick={() => openDetails(m.id)} className="hover cursor-pointer">
-                  <td className="whitespace-nowrap">{formatDateTime(m.createdAt)}</td>
-                  <td className="max-w-48 truncate">{m.senderEmail}</td>
-                  <td className="max-w-48 truncate">{m.recipientEmail}</td>
-                  <td className="max-w-64 truncate">{m.subject || '(без темы)'}</td>
-                  <td>
+                <tr
+                  key={m.id}
+                  onClick={() => openDetails(m.id)}
+                  className="transition border-b cursor-pointer border-white/30 last:border-0 hover:bg-white/50"
+                >
+                  <td className="px-4 py-2 whitespace-nowrap text-slate-700">{formatDateTime(m.createdAt)}</td>
+                  <td className="px-4 py-2 truncate max-w-48 text-slate-700">{m.senderEmail}</td>
+                  <td className="px-4 py-2 truncate max-w-48 text-slate-700">{m.recipientEmail}</td>
+                  <td className="px-4 py-2 truncate max-w-64 text-slate-800">{m.subject || '(без темы)'}</td>
+                  <td className="px-4 py-2">
                     <VerdictBadge v={m.verdict} />
                   </td>
                 </tr>
@@ -234,13 +272,16 @@ export default function QuarantineTab({
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-2 text-sm">
+
+      <div className="flex items-center gap-2 text-sm text-slate-600">
         <button
           onClick={() => setPage((p) => Math.max(0, p - 1))}
           disabled={page === 0}
-          className="btn btn-sm"
+          className="p-1.5 rounded-lg bg-white/60 backdrop-blur-sm border border-white/70
+                     hover:bg-white/90 disabled:opacity-40 transition
+                     shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
         >
-          ‹
+          <ChevronLeft className="w-4 h-4" />
         </button>
         <span>
           Стр. {page + 1} из {data?.totalPages ?? 1} (всего {data?.totalElements ?? 0})
@@ -248,11 +289,20 @@ export default function QuarantineTab({
         <button
           onClick={() => setPage((p) => (data && p + 1 < data.totalPages ? p + 1 : p))}
           disabled={!data || page + 1 >= data.totalPages}
-          className="btn btn-sm"
+          className="p-1.5 rounded-lg bg-white/60 backdrop-blur-sm border border-white/70
+                     hover:bg-white/90 disabled:opacity-40 transition
+                     shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
         >
-          ›
+          <ChevronRight className="w-4 h-4" />
         </button>
-        <button onClick={() => loadRef.current()} className="btn btn-sm btn-outline">
+        <button
+          onClick={() => loadRef.current()}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                     bg-white/60 backdrop-blur-sm border border-white/70 text-slate-700
+                     hover:bg-white/90 transition
+                     shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
           Обновить
         </button>
       </div>
@@ -263,13 +313,11 @@ export default function QuarantineTab({
           token={token}
           onClose={() => setOpen(null)}
           onReprocessed={(fresh) => {
-            // Только «Перепроверить»: письмо осталось в том же ящике, фильтры не трогаем.
             setOpen(fresh);
             setReloadToken((t) => t + 1);
             onStatsRefresh();
           }}
           onResolved={(status) => {
-            // release/forward: анализ закрыт, следим за письмом в его новом ящике.
             if (status === 'REROUTED' || status === 'FORWARDED') setBox(status);
             setReloadToken((t) => t + 1);
             onStatsRefresh();
