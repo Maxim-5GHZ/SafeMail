@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { LayoutDashboard, ShieldAlert, Settings as SettingsIcon, Inbox, LogOut } from 'lucide-react';
+import FullPageLoader from '@/components/FullPageLoader';
+import { LogoMark } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import { ApiError, getAdminStats } from '@/lib/api';
 import type { AdminStats } from '@/lib/types';
@@ -10,11 +13,9 @@ import QuarantineTab from './QuarantineTab';
 import DomainSettings from './DomainSettings';
 import Stopwords from './Stopwords';
 import OfficerAddresses from './OfficerAddresses';
-import { LogoMark } from '@/components/Logo';
 
 type Tab = 'quarantine' | 'overview' | 'settings';
 
-/** SOC из трёх вкладок: работа (карантин) / картина (обзор) / конфигурация (настройки). */
 export default function AdminPage() {
   const { ready, token, role, logout } = useAuth();
   const router = useRouter();
@@ -29,7 +30,6 @@ export default function AdminPage() {
     if (ready && !token) router.replace('/login');
   }, [ready, token, router]);
 
-  /** true, если это протухшая сессия (вызывающий код дальше ничего не делает). */
   const onAuthFail = useCallback(
     (e: unknown) => {
       if (e instanceof DOMException && e.name === 'AbortError') return true;
@@ -77,14 +77,28 @@ export default function AdminPage() {
     return () => clearInterval(t);
   }, []);
 
-  if (!ready || !token) return <div className="p-8">Загрузка…</div>;
+  if (!ready || !token) {
+    return <FullPageLoader label="Проверка доступа…" />;
+  }
 
   if (role !== 'ADMIN') {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="alert alert-error max-w-md">
-          <span>403 — раздел только для ИБ (нужна роль администратора).</span>
-          <a href="/inbox" className="link link-hover">
+      <div className="flex items-center justify-center min-h-screen px-4 bg-gradient-to-br from-slate-50 via-white to-sky-50 bg-dot-grid">
+        <div className="max-w-md p-6 rounded-2xl
+                        bg-white/40 backdrop-blur-2xl backdrop-saturate-150
+                        border border-white/50
+                        shadow-[0_8px_32px_rgba(31,38,135,0.12),inset_0_1px_0_rgba(255,255,255,0.85)]">
+          <div className="px-3 py-2 mb-3 text-sm border rounded-lg text-rose-700 bg-rose-50/70 border-rose-200/60">
+            403 — раздел только для ИБ (нужна роль администратора).
+          </div>
+          <a
+            href="/inbox"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
+                       bg-white/70 backdrop-blur-sm border border-white/70
+                       hover:bg-white/90 transition
+                       shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(0,0,0,0.05)]"
+          >
+            <Inbox className="w-4 h-4" />
             Во входящие
           </a>
         </div>
@@ -94,66 +108,161 @@ export default function AdminPage() {
 
   const quarantineCount = stats?.byStatus?.REROUTED ?? 0;
 
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: 'quarantine', label: 'Карантин', icon: <ShieldAlert className="w-4 h-4" />, badge: stats ? quarantineCount : undefined },
+    { id: 'overview', label: 'Обзор', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'settings', label: 'Настройки', icon: <SettingsIcon className="w-4 h-4" /> },
+  ];
+  const activeIdx = TABS.findIndex((t) => t.id === tab);
+
   return (
-    <div className="min-h-screen bg-base-200">
-      <div className="navbar bg-base-100 border-b">
-        <span className="font-bold text-lg text-error px-4 flex items-center gap-2">
-          <LogoMark className="w-7 h-7" />
-          СейфМейл · Пульт ИБ
-        </span>
-        <span className="ml-auto flex items-center gap-3 px-4 text-sm">
-          <a href="/inbox" className="px-3 py-1 rounded-full bg-base-200 hover:bg-base-300">
-            Входящие
-          </a>
-          <button
-            onClick={() => {
-              logout();
-              router.replace('/login');
-            }}
-            className="px-3 py-1 rounded-full bg-base-200 hover:bg-base-300"
-          >
-            Выйти
-          </button>
-        </span>
-      </div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-white to-sky-50 bg-dot-grid">
 
-      <div className="p-4 flex flex-col gap-3">
-        <div className="tabs tabs-boxed bg-base-100 shadow self-start" role="tablist" aria-label="Разделы пульта ИБ">
-          <button role="tab" aria-selected={tab === 'quarantine'} onClick={() => setTab('quarantine')} className={`tab ${tab === 'quarantine' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
-            Карантин{stats && ` · ${quarantineCount}`}
-          </button>
-          <button role="tab" aria-selected={tab === 'overview'} onClick={() => setTab('overview')} className={`tab ${tab === 'overview' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
-            Обзор
-          </button>
-          <button role="tab" aria-selected={tab === 'settings'} onClick={() => setTab('settings')} className={`tab ${tab === 'settings' ? 'tab-active' : 'bg-base-200 hover:bg-base-300'}`}>
-            Настройки
-          </button>
+      {/* ─── Декоративные слои ─────────────────────────────────────────── */}
+
+      {/* 1. Очень слабые цветные пятна — почти невидимые, только тёплые акценты по краям */}
+      <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full bg-cyan-300/[0.07] blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-40 -right-32 w-[42rem] h-[42rem] rounded-full bg-blue-400/[0.06] blur-3xl" />
+
+      {/* 2. Радиальный «свет» в центре рабочей области — мягко подсвечивает контент */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 60% 45% at 50% 30%, rgba(255,255,255,0.55), transparent 70%)',
+        }}
+      />
+
+      {/* 3. Мягкое свечение под шапкой — глубина и «отрыв» хедера от контента */}
+      <div aria-hidden className="absolute top-0 left-0 right-0 h-32 pointer-events-none bg-gradient-to-b from-white/55 to-transparent" />
+
+      {/* 4. Тонкая белая линия на самом верху — эффект «блика» шапки */}
+      <div aria-hidden className="absolute top-0 left-0 right-0 h-px pointer-events-none bg-gradient-to-r from-transparent via-white/90 to-transparent" />
+
+      {/* 5. Едва заметный шум — «плёнка», убирает ощущение плоского градиента */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 bg-noise opacity-[0.025]" />
+
+      {/* ─── Контент ───────────────────────────────────────────────────── */}
+
+      <div className="relative z-10 flex flex-col min-h-screen">
+        {/* Стеклянная шапка */}
+        <header className="sticky top-0 z-20 px-4 py-3
+                           bg-white/25 backdrop-blur-3xl backdrop-saturate-150
+                           border-b border-white/60
+                           shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_16px_rgba(31,38,135,0.06)]">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-2 text-lg font-bold text-slate-800">
+              <LogoMark className="w-7 h-7" />
+              СейфМейл · Пульт ИБ
+            </span>
+            <span className="flex items-center gap-2 ml-auto">
+              <a
+                href="/inbox"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                           bg-white/60 backdrop-blur-sm border border-white/70 text-slate-700
+                           hover:bg-white/90 transition
+                           shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+              >
+                <Inbox className="w-3.5 h-3.5" />
+                Входящие
+              </a>
+              <button
+                onClick={() => {
+                  logout();
+                  router.replace('/login');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                           bg-white/60 backdrop-blur-sm border border-white/70 text-slate-700
+                           hover:bg-white/90 transition
+                           shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Выйти
+              </button>
+            </span>
+          </div>
+        </header>
+
+        <div className="flex flex-col flex-1 gap-3 p-4">
+          {/* Переключатель вкладок со скользящей подложкой */}
+          <div className="self-start inline-flex p-1 rounded-full
+                          bg-white/40 backdrop-blur-md border border-white/60
+                          shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(0,0,0,0.06)]">
+            <div
+              className="relative inline-grid"
+              style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}
+            >
+              <span
+                aria-hidden
+                className="absolute top-0 bottom-0 left-0 rounded-full
+                           bg-white/95
+                           shadow-[0_2px_6px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.9)]
+                           transition-transform duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
+                style={{
+                  width: `calc(100% / ${TABS.length})`,
+                  transform: `translateX(${activeIdx * 100}%)`,
+                }}
+              />
+
+              {TABS.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setTab(t.id)}
+                    className={`relative z-10 inline-flex items-center justify-center gap-1.5 px-4 py-1.5
+                                text-sm whitespace-nowrap
+                                transition-colors duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+                                  active
+                                    ? 'text-slate-900 font-medium'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                  >
+                    <span className="inline-flex shrink-0" aria-hidden>{t.icon}</span>
+                    <span>{t.label}</span>
+                    {typeof t.badge === 'number' && t.badge > 0 && (
+                      <span
+                        className={`shrink-0 inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full text-[10px] font-bold leading-none ${
+                          active ? 'bg-rose-100 text-rose-700' : 'bg-rose-500 text-white'
+                        }`}
+                      >
+                        {t.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {statsError && (
+            <div className="px-3 py-2 text-sm border rounded-lg bg-amber-50/80 backdrop-blur-sm border-amber-200/60 text-amber-800">
+              Статистика недоступна: {statsError}
+            </div>
+          )}
+
+          {tab === 'quarantine' && (
+            <QuarantineTab
+              token={token}
+              stats={stats}
+              onStatsRefresh={() => statsRef.current()}
+              onAuthFail={onAuthFail}
+            />
+          )}
+
+          {tab === 'overview' && <Dashboard stats={stats} days={days} onDays={setDays} />}
+
+          {tab === 'settings' && (
+            <div className="flex flex-col gap-3">
+              <DomainSettings token={token} />
+              <Stopwords token={token} />
+              <OfficerAddresses token={token} />
+            </div>
+          )}
         </div>
-
-        {statsError && (
-          <div className="alert alert-warning">
-            <span>Статистика недоступна: {statsError}</span>
-          </div>
-        )}
-
-        {tab === 'quarantine' && (
-          <QuarantineTab
-            token={token}
-            stats={stats}
-            onStatsRefresh={() => statsRef.current()}
-            onAuthFail={onAuthFail}
-          />
-        )}
-
-        {tab === 'overview' && <Dashboard stats={stats} days={days} onDays={setDays} />}
-
-        {tab === 'settings' && (
-          <div className="flex flex-col gap-3">
-            <DomainSettings token={token} />
-            <Stopwords token={token} />
-            <OfficerAddresses token={token} />
-          </div>
-        )}
       </div>
     </div>
   );

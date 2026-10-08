@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Save, Server, Globe } from 'lucide-react';
 import { ApiError, getSystemSettings, updateSystemSettings, type SystemSettingsDto } from '@/lib/api';
 
-/** Домены приёма почты и режим релея: меняется из /admin без пересборки контейнеров. */
 export default function DomainSettings({ token }: { token: string }) {
   const [loaded, setLoaded] = useState(false);
   const [primary, setPrimary] = useState('');
@@ -64,85 +64,122 @@ export default function DomainSettings({ token }: { token: string }) {
   };
 
   if (!loaded && !msg) {
-    return <div className="bg-base-100 rounded-xl shadow px-4 py-3 text-sm opacity-60">Загрузка настроек…</div>;
+    return (
+      <div className="rounded-2xl px-4 py-3 text-sm
+                      bg-white/40 backdrop-blur-2xl border border-white/50
+                      shadow-[0_8px_24px_rgba(31,38,135,0.08),inset_0_1px_0_rgba(255,255,255,0.85)]">
+        <div className="w-32 h-4 mb-2 rounded bg-slate-200/70 animate-pulse" />
+        <div className="w-64 h-3 rounded bg-slate-200/50 animate-pulse" />
+      </div>
+    );
   }
 
   return (
-    <div className="bg-base-100 rounded-xl shadow px-4 py-3 mb-4">
-      <h3 className="soc-panel-title mb-2">Почтовый домен и приём писем</h3>
-      <p className="text-xs opacity-60 mb-3">
+    <div className="rounded-2xl px-5 py-4
+                    bg-white/40 backdrop-blur-2xl backdrop-saturate-150
+                    border border-white/50
+                    shadow-[0_8px_24px_rgba(31,38,135,0.08),inset_0_1px_0_rgba(255,255,255,0.85)]">
+      <div className="flex items-center gap-2 mb-2">
+        <Globe className="w-4 h-4 text-blue-600" />
+        <h3 className="text-sm font-bold text-slate-800">Почтовый домен и приём писем</h3>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">
         Основной домен и алиасы, на которые шлюз принимает входящие (например, с Gmail).
         Письма на любой из доменов попадают в один ящик пользователя. Применяется сразу, без пересборки.
       </p>
 
       {msg && (
-        <div className={`px-3 py-2 rounded-lg text-xs mb-3 ${msg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+        <div className={`px-3 py-2 rounded-lg text-xs mb-3 border ${
+          msg.ok
+            ? 'bg-emerald-50/80 backdrop-blur-sm text-emerald-800 border-emerald-200/60'
+            : 'bg-rose-50/80 backdrop-blur-sm text-rose-800 border-rose-200/60'
+        }`}>
           {msg.text}
         </div>
       )}
 
-      <form onSubmit={save} className="flex flex-col gap-3 max-w-xl text-xs">
+      <form onSubmit={save} className="flex flex-col max-w-xl gap-3 text-xs">
         <label className="flex flex-col gap-1">
-          <span className="font-bold">Основной домен</span>
+          <span className="font-bold text-slate-700">Основной домен</span>
           <input
             value={primary}
             onChange={(e) => setPrimary(e.target.value)}
             placeholder="mail.hotcodeband.ru"
             required
-            className="input input-sm input-bordered w-full font-mono"
+            className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none transition
+                       bg-white/60 backdrop-blur-sm border border-white/70 text-slate-800
+                       placeholder:text-slate-400
+                       focus:bg-white/85 focus:ring-2 focus:ring-blue-300/70 focus:border-white/90
+                       shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
           />
-          <span className="opacity-60">Новые ящики создаются на нём. MAIL_DOMAIN в .env — только сид при первом старте.</span>
+          <span className="text-slate-400">Новые ящики создаются на нём. MAIL_DOMAIN в .env — только сид при первом старте.</span>
         </label>
 
         <label className="flex flex-col gap-1">
-          <span className="font-bold">Алиасы через запятую</span>
+          <span className="font-bold text-slate-700">Алиасы через запятую</span>
           <input
             value={aliases}
             onChange={(e) => setAliases(e.target.value)}
             placeholder="hotcodeband.ru, mail.hotcodeband.ru"
-            className="input input-sm input-bordered w-full font-mono"
+            className="w-full px-3 py-2 rounded-lg font-mono text-sm outline-none transition
+                       bg-white/60 backdrop-blur-sm border border-white/70 text-slate-800
+                       placeholder:text-slate-400
+                       focus:bg-white/85 focus:ring-2 focus:ring-blue-300/70 focus:border-white/90
+                       shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
           />
-          <span className="opacity-60">Основной домен подставляется сам, дубли уберутся.</span>
+          <span className="text-slate-400">Основной домен подставляется сам, дубли уберутся.</span>
         </label>
 
-        <label className="flex items-center gap-2 cursor-pointer font-bold">
+        <label className="flex items-center gap-2 font-bold cursor-pointer text-slate-700">
           <input
             type="checkbox"
             checked={relayEnabled}
             onChange={(e) => setRelayEnabled(e.target.checked)}
-            className="checkbox checkbox-sm"
+            className="w-4 h-4 rounded accent-blue-600"
           />
+          <Server className="w-3.5 h-3.5 text-slate-500" />
           Исходящий SMTP-релей (пересылка чистых писем дальше)
         </label>
-        <p className="-mt-2 opacity-60">
+        <p className="-mt-2 text-slate-400">
           Выключено (по умолчанию): SafeMail — конечный ящик, чистая почта сразу во «Входящих».
           Включай, только если дальше по цепочке стоит настоящий почтовый сервер.
         </p>
 
         {relayEnabled && (
           <div className="grid grid-cols-3 gap-2">
-            <label className="col-span-2 flex flex-col gap-1">
-              <span className="opacity-60">Хост релея</span>
+            <label className="flex flex-col col-span-2 gap-1">
+              <span className="text-slate-500">Хост релея</span>
               <input
                 value={relayHost}
                 onChange={(e) => setRelayHost(e.target.value)}
-                className="input input-xs input-bordered w-full font-mono"
+                className="w-full px-3 py-1.5 rounded-lg font-mono text-xs outline-none transition
+                           bg-white/60 backdrop-blur-sm border border-white/70 text-slate-800
+                           focus:bg-white/85 focus:ring-2 focus:ring-blue-300/70"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="opacity-60">Порт</span>
+              <span className="text-slate-500">Порт</span>
               <input
                 type="number"
                 value={relayPort}
                 onChange={(e) => setRelayPort(Number(e.target.value))}
-                className="input input-xs input-bordered w-full font-mono"
+                className="w-full px-3 py-1.5 rounded-lg font-mono text-xs outline-none transition
+                           bg-white/60 backdrop-blur-sm border border-white/70 text-slate-800
+                           focus:bg-white/85 focus:ring-2 focus:ring-blue-300/70"
               />
             </label>
           </div>
         )}
 
         <div>
-          <button type="submit" disabled={saving || !primary.trim()} className="btn btn-sm btn-primary px-6">
+          <button
+            type="submit"
+            disabled={saving || !primary.trim()}
+            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-medium
+                       bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition
+                       shadow-[0_2px_8px_rgba(37,99,235,0.30)]"
+          >
+            <Save className="w-3.5 h-3.5" />
             {saving ? 'Сохранение…' : 'Сохранить'}
           </button>
         </div>
