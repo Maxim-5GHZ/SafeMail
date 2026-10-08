@@ -281,7 +281,10 @@ BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
 Хост-порты наружу параметризованы (`5432/8080/80/443` по умолчанию) — внутри сети
 всё ходит по стандартным портам.
 `nginx` (:80→301, :443 TLS) — терминация HTTPS перед `frontend`
-(`client_max_body_size 25m`, HMR-websocket проксируется); серты —
+(`client_max_body_size 25m`, HMR-websocket проксируется); апстрим — через
+переменную (`resolver 127.0.0.11` + `proxy_pass http://$upstream_frontend`),
+а не блок `upstream`: иначе либо emerg `may not have port` (порт на имени
+группы запрещён), либо `host not found` при старте раньше фронта; серты —
 самоподпись OpenSSL via `nginx/gen-certs.sh` (`CN=localhost`,
 `SAN: localhost, *.corp-sec.ru, 127.0.0.1`), ключ только на хосте
 (`nginx/certs/` в `.gitignore`, в репо не коммитить).
