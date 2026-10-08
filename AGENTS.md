@@ -292,7 +292,10 @@ dev-сервера в `./frontend/.next` ломает хостовые `npm run 
 Прод — overlay `docker-compose.prod.yml`
 (`-f docker-compose.yml -f docker-compose.prod.yml up -d --build`):
 реальные `25:2525`/`587:2587` наружу, фронт из `Dockerfile.prod` (standalone,
-`PORT=3008` под nginx upstream, без bind-mount), mailhog только по профилю
+`PORT=3008` под nginx upstream, `volumes: !reset []` + `user: "0:0"` — иначе
+dev-маунт `./frontend:/app` из базы перекрывает запечённый `server.js`
+и фронт падает `MODULE_NOT_FOUND`; `BACKEND_URL`/`NEXT_PUBLIC_MAIL_DOMAIN` —
+`build.args`, т.к. rewrites и `NEXT_PUBLIC_*` запекаются в `next build`), mailhog только по профилю
 `debug`, relay — через `MAIL_RELAY_HOST/PORT` из `.env`. Приём из интернета
 (Gmail→шлюз): MX/A-записи + открытый 25-й порт у хостера — см. `docs/PROD.md`.
 В песочнице без сети `docker build` может не тянуть PyPI — это ок,

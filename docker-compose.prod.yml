@@ -19,14 +19,21 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        BACKEND_URL: http://gateway:8080
+        NEXT_PUBLIC_MAIL_DOMAIN: ${MAIL_DOMAIN:-corp-sec.ru}
     # Standalone server.js слушает PORT (в образе EXPOSE 3000) —
     # поднимаем на 3008, куда смотрит nginx upstream.
     environment:
       - PORT=3008
       - BACKEND_URL=http://gateway:8080
       - NEXT_PUBLIC_MAIL_DOMAIN=${MAIL_DOMAIN:-corp-sec.ru}
-    # Никаких bind-mount: в проде код только из образа.
-    volumes: []
+    # Никаких bind-mount: в проде код только из образа. !reset обязателен —
+    # обычный volumes: [] мержится с базой и dev-маунт ./frontend:/app
+    # перекрывает запечённый server.js (фронт падал с MODULE_NOT_FOUND).
+    # Dev-user из базы тоже сбрасываем: прод бежит root'ом образа.
+    user: "0:0"
+    volumes: !reset []
     restart: always
 
   mailhog:
