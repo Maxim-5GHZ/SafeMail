@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { ApiError, downloadAttachment, forwardMessage, getMessage, releaseMessage, reprocessMessage } from '@/lib/api';
 import { formatDateTime, formatSize } from '@/lib/format';
 import {
+  attachmentReasonLabel,
   categoryLabel,
   linkReasonLabel,
   linkStatusLabel,
@@ -79,7 +80,7 @@ function parseTriggerTag(flag: string): { type: string; value: string; badgeCls:
   if (att) {
     return {
       type: 'ВЛОЖЕНИЕ',
-      value: att[1],
+      value: attachmentReasonLabel(att[1]),
       badgeCls: 'bg-red-100 text-red-800 border-red-300',
     };
   }

@@ -132,9 +132,18 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   extracted_text,is_dangerous,risk_score,risk_reasons[]}], links[{url}]}`.
   Текст вложений (PDF через `pypdf`, OOXML/ODF через stdlib-zip, plain/html — декодированием)
   идёт в `extracted_attachments_text` и входит в enrich/classify-вход — угроза внутри
-  PDF/DOC ловится. Скан вложений: exe-расширения, двойные расширения (`pdf.exe`),
-  макросы VBA (`vbaProject.bin` в zip), JS/Launch/Embedded в PDF, скрипты в HTML,
-  exe внутри zip (`risk_reasons`, `is_dangerous` при `risk_score>=70`).
+  PDF/DOC ловится. Скан вложений: исполняемые расширения (incl. `.apk/.apks/.xapk/.dex` —
+  всегда блок), двойные расширения (`pdf.exe`), макросы VBA (`vbaProject.bin` в zip,
+  в т.ч. контрабандой в `.docx`), DDE-поля (`office-dde`, 90), встроенные OLE/ActiveX
+  (`office-ole-object`, 85), протащенные exe/js/apk внутри документа
+  (`office-embedded-executable`, 95), внешние связи `TargetMode="External"`
+  (`office-external-relationship`, 65 — в одиночку НЕ блочит, обычные гиперссылки
+  легитимны), JS/SubmitForm/ImportData/Launch/Embedded/XFA в PDF, скрипты в HTML,
+  рекурсия внутрь zip (глубина ≤3, ≤100 файлов, ≤50МБ распакованного;
+  `archive-contains-executable/script`, `macro-vba`, `android-package` по начинке
+  `AndroidManifest.xml+*.dex`, `encrypted-archive`, счётчик `nested-archive:N`),
+  `.rar/.7z/.iso/.img` распаковать нечем — честный блок `unsupported-archive` (70)
+  (`risk_reasons`, `is_dangerous` при `risk_score>=70`).
   Безобидный `/OpenAction [page /Fit]` навигации — не угроза (только в связке с JS/Launch,
   иначе fpdf2/Word-PDF уходили бы в карантин — регрессия покрыта startup-тестом).
   Gateway: опасное вложение при чистом тексте эскалирует вердикт до `OTHER_THREAT 0.85`

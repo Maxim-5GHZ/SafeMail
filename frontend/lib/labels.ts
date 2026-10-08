@@ -125,8 +125,17 @@ export function attachmentReasonLabel(r: string): string {
   if (r === 'macro-extension') return 'макро-формат документа';
   if (r === 'pdf-javascript') return 'JavaScript внутри PDF';
   if (r === 'pdf-launch-or-embedded') return 'запуск/встроенный файл в PDF';
+  if (r === 'pdf-xfa-form') return 'XFA-форма со скриптами в PDF';
   if (r === 'html-script') return 'скрипт внутри HTML';
   if (r === 'archive-contains-executable') return 'исполняемый файл внутри архива';
+  if (r === 'archive-contains-script') return 'скрипт внутри архива';
+  if (r === 'android-package') return 'Android-пакет (.apk) внутри архива';
+  if (r === 'office-dde') return 'DDE-поле (автозапуск команды) в документе';
+  if (r === 'office-external-relationship') return 'внешняя связь документа';
+  if (r === 'office-ole-object') return 'встроенный OLE-объект в документе';
+  if (r === 'office-embedded-executable') return 'исполняемый файл внутри документа';
+  if (r === 'unsupported-archive') return 'архив без проверки содержимого (.rar/.7z/.iso)';
+  if (r.startsWith('nested-archive:')) return `вложенный архив (уровень ${r.slice(15)})`;
   if (r === 'encrypted-archive') return 'шифрованный архив';
   if (r === 'mime-mismatch') return 'тип файла не совпадает с расширением';
   if (r === 'script-file') return 'файл скрипта';

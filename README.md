@@ -69,9 +69,12 @@
 1. **Парсинг** (`POST /internal/parse-extract`): текст тела + текст вложений
    (PDF через `pypdf`, OOXML/ODF через stdlib-zip) + ссылки. Всё входит в анализ —
    угроза внутри PDF/DOC ловится.
-2. **Скан вложений**: exe-расширения, двойные расширения (`pdf.exe`), макросы VBA,
-   JS/Launch в PDF, скрипты в HTML, exe в zip. Порог `risk_score ≥ 70` → `is_dangerous`
-   (наивный `/OpenAction [page /Fit]` без JS/Launch — не угроза, покрыто стартап-тестом).
+2. **Скан вложений**: exe/apk/dex-расширения (apk — всегда блок), двойные расширения
+   (`pdf.exe`), макросы VBA (в т.ч. контрабандой в `.docx`), DDE/OLE/external/встроенные
+   exe в Office, JS/SubmitForm/Launch/Embedded/XFA в PDF, скрипты в HTML, рекурсия
+   в zip (глубина ≤3), `.rar/.7z/.iso/.img` — блок `unsupported-archive`.
+   Порог `risk_score ≥ 70` → `is_dangerous` (наивный `/OpenAction [page /Fit]`
+   без кода и одиночная внешняя ссылка-гиперссылка — не угроза, покрыто стартап-тестами).
 3. **Обогащение** (`POST /internal/normalize-enrich`): снятие zero-width (`U+200B/C/D`,
    `U+FEFF`, счётчик `hidden_chars_removed` → флаг `hidden-chars:N`), спеллер
    (`source`: `yandex` | `mixed-alphabet` | `layout`), скоринг ссылок
