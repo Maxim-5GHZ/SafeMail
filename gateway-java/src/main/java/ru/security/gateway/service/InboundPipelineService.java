@@ -180,8 +180,10 @@ public class InboundPipelineService {
     }
 
     // 1. Parser
+    long t0 = System.nanoTime();
     Map<String, Object> parsed = postJson(parserUrl + "/internal/parse-extract",
         Map.of("raw_base64", Base64.getEncoder().encodeToString(raw)));
+    long parseMs = (System.nanoTime() - t0) / 1_000_000;
     String cleanText = str(parsed, "clean_text");
     String attachText = str(parsed, "extracted_attachments_text");
     @SuppressWarnings("unchecked")
@@ -234,8 +236,10 @@ public class InboundPipelineService {
     if (subject == null) subject = "";
     String enrichInput = (subject.isBlank() ? "" : subject + "\n")
         + (cleanText == null ? "" : cleanText) + "\n" + (attachText == null ? "" : attachText);
+    t0 = System.nanoTime();
     Map<String, Object> enriched = postJson(enrichUrl + "/internal/normalize-enrich",
         Map.of("text", enrichInput, "urls", urls.stream().map(m -> m.get("url")).toList()));
+    long enrichMs = (System.nanoTime() - t0) / 1_000_000;
     String normalized = str(enriched, "normalized_text");
     if (normalized.isBlank()) normalized = enrichInput;
     @SuppressWarnings("unchecked")
@@ -262,8 +266,10 @@ public class InboundPipelineService {
     List<Map<String, String>> swRules = stopwordRepo.findByActiveTrue().stream()
         .map(sw -> Map.of("pattern", sw.getPattern(), "category", sw.getCategory().name()))
         .toList();
+    t0 = System.nanoTime();
     Map<String, Object> verdict = postJson(classifyUrl + "/internal/classify-threat",
         Map.of("text", normalized, "stopwords", swRules));
+    long classifyMs = (System.nanoTime() - t0) / 1_000_000;
     ThreatCategory cat = parseCategory(str(verdict, "category"));
     double conf = num(verdict, "confidence");
     double hscore = num(verdict, "heuristic_score");
@@ -312,6 +318,7 @@ public class InboundPipelineService {
     ta.setSpellerFixes(toJson(enriched.getOrDefault("speller_fixes", List.of())));
     analysisRepo.save(ta);
     msg.setStatus(MessageStatus.ANALYZED);
+    log.info("pipeline {} parse={}ms enrich={}ms classify={}ms", id, parseMs, enrichMs, classifyMs);
 
     // 4. Router
     if (cat == ThreatCategory.NONE) {

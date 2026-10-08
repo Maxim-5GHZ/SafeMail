@@ -43,6 +43,10 @@ GIGA_TIMEOUT_S = 5.5
 MISTRAL_MAX_SLOTS = 6
 GIGA_MAX_SLOTS = 1
 TEXT_LIMIT = 2000
+# Кап генерации: ответ — короткий JSON (~60-100 токенов), запас 3x.
+# Режет хвост генерации (~до 1с с LLM-звонка). Обрезка безопасна:
+# битый JSON -> non_json -> штатный fallback, а не неверный вердикт.
+MAX_TOKENS = 300
 
 VALID_CATEGORIES = set(CATEGORIES)
 
@@ -162,6 +166,7 @@ class MistralOpenRouterProvider:
                 {"role": "user", "content": (text or "")[:TEXT_LIMIT]},
             ],
             "temperature": 0,
+            "max_tokens": MAX_TOKENS,
         }
         try:
             resp = self._client.post(OPENROUTER_API_URL, json=payload, headers=self._headers)
@@ -234,7 +239,7 @@ class GigaChatProvider:
             Messages(role=MessagesRole.SYSTEM, content=SYSTEM_PROMPT_CLASSIFY),
             Messages(role=MessagesRole.USER, content=(text or "")[:TEXT_LIMIT]),
         ]
-        response = self._giga.chat(Chat(messages=messages))
+        response = self._giga.chat(Chat(messages=messages, max_tokens=MAX_TOKENS))
         return response.choices[0].message.content
 
     def classify(self, text: str) -> tuple[str, float]:
