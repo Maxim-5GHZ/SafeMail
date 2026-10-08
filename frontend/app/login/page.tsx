@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
 import { ApiError, getPublicConfig } from '@/lib/api';
 import { LogoFull } from '@/components/Logo';
@@ -56,7 +57,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 gap-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-xl shadow p-6 flex flex-col gap-3">
         <div className="flex justify-center">
           <LogoFull />
@@ -123,6 +124,9 @@ export default function LoginPage() {
           {busy ? '…' : mode === 'login' ? 'Войти' : 'Создать ящик'}
         </button>
       </form>
+      <Link href="/" className="text-sm text-gray-500 hover:text-blue-600 transition-colors">
+        ← Назад к презентации
+      </Link>
     </div>
   );
 }

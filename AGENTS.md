@@ -226,9 +226,13 @@ delivery_logs`. DDL — `V1__init.sql`, claim очереди — `V2__queue_clai
 Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
 
 - `/login` — регистрация `username+password → username@<primaryDomain из /public/config>`,
-  вход по email; JWT в `localStorage` (MVP), роль из payload, 401 → `/login`;
-  после входа и с корня `/` роль `ADMIN` ведётся сразу в `/admin` (SOC),
-  остальные — в `/inbox` (`homeForRole/roleOf/storedRole` в `lib/auth`).
+  вход по email; JWT в `localStorage` (MVP), роль из payload, 401 → `/login`.
+- `/` — полноэкранная презентация (6 слайдов: продукт/проблема/архитектура/
+  аудитория/окупаемость/демо; скролл/стрелки/свайпы, `fadeIn` в `globals.css`,
+  сегментные SVG-иконки в `components/icons.tsx` — эмодзи запрещены).
+  Показывается всем, включая залогиненных; кнопка «В интерфейс/Войти» ведёт
+  по роли (`homeForRole`: `ADMIN`→`/admin`, остальные→`/inbox`).
+  Авторедиректа с корня больше нет.
   Показываемый домен — живой (`GET /public/config`), запечённый
   `NEXT_PUBLIC_MAIL_DOMAIN` — только фолбэк; тост в `/inbox` сверяет получателя
   с `allowedDomains` (алиасы), а не с одной строкой env.
