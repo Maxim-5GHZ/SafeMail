@@ -149,7 +149,8 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   `U+FEFF`) режется сразу по всему тексту, счётчик — `hidden_chars_removed`,
   gateway дописывает флаг `hidden-chars:N` в `heuristic_flags`. Скоринг: IP +50, хит чёрного списка +30/+15, без TLS +10.
 - **classify** `POST /internal/classify-threat {text, stopwords?[{pattern,category}]}` →
-  `{category, confidence, explanation, heuristic_score, heuristic_flags}`.
+  `{category, confidence, explanation, heuristic_score, heuristic_flags,
+  semantic_category, semantic_score, semantic_comment, model}`.
   Управляемые стоп-слова из PG (`threat_stopwords`): подстрока без учёта регистра
   по нормализованному тексту, первое совпадение → вердикт категории правила
   (`confidence 0.9`, флаг `stopword:<pattern>`; чужая/NONE-категория → `OTHER_THREAT`).
@@ -159,6 +160,15 @@ FastAPI, контракты — `POST /internal/*`, `GET /health`. Стиль: �
   safe-подстроки (`колебан, рубл, скипидар…`) не считать матом.
   Направленный мат/оскорбления без других маркеров — `OTHER_THREAT 0.75`
   (иначе «мат в теме при пустом теле» уходил `DELIVERED`).
+  Семантика — `app/semantic.py`: Mistral через OpenRouter (primary,
+  `OPENROUTER_API_KEY` + опц. `OPENROUTER_MODEL`, `httpx`, таймаут 8с) +
+  GigaChat (fallback, `GIGACHAT_API_KEY`, таймаут ~5.5с). Пулы запросов 6+1
+  (семафоры + keep-alive): каждый `explain()` сначала в Mistral, при падении —
+  один заход в GigaChat; оба упали — `(NONE,0,0)` fail-closed. Падение Mistral
+  логируется warning-строкой `mistral fallback -> gigachat | reason | ms`
+  (без тел писем/ключей), исход — `gigachat fallback ok` / `both providers failed`;
+  счётчики — в `GET /health.semantic`, провайдер — флагом `semantic-provider:*`.
+  Ключи только из `.env` (в репо — пустые плейсхолдеры `.env.example`).
 - Startup-тесты (`run_startup_tests`, `lifespan`) обязаны проходить,
   иначе процесс падает с `exit 1`. Новое правило — сначала тест-кейс
   (прямой/транслит/обфускация/false-positive), потом код.

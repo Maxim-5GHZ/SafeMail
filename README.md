@@ -86,8 +86,10 @@
    пайплайна) на адреса правила категории → `REROUTED`. При недоступности ML —
    fallback, SMTP-сессия не страдает (тяжёлое — в поллере).
 
-**SLM**: вместо локальной модели — внешний GigaChat (`ml-classify/app/semantic.py`,
-ключ только в `.env`, без ключа/сети — rule-based fallback, fail-closed).
+**SLM**: вместо локальной модели — внешние LLM (`ml-classify/app/semantic.py`,
+ключи только в `.env`, без ключей/сети — rule-based fallback, fail-closed):
+Mistral через OpenRouter (primary) + GigaChat (fallback при падении Mistral,
+пулы 6+1, warning-лог `mistral fallback -> gigachat | reason | ms`).
 Промпт просит `NONE` «с низкой уверенностью», поэтому raw у нормы ~0.05 и в порогах
 не участвует. `fuse_verdict`: эвристика главная (stopword или `≥0.75` побеждает),
 семантика ловит парафразы при `NONE` (`0.65/0.05`, флаг `semantic:<cat>:<score>`);
@@ -159,7 +161,7 @@ gateway-java/   Spring Boot: smtp/, service/ (InboundPipelineService, MailRoutin
                 MessageService, AuthService), controller/, security/, domain/, repository/
 ml-parser/      FastAPI :8001 — parse-extract
 ml-enrich/      FastAPI :8002 — normalize-enrich
-ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + GigaChat + semantic-veto)
+ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + Mistral/GigaChat + semantic-veto)
 frontend/       Next.js 14: app/(login,inbox,admin), lib/ (api, labels, auth), components/
 nginx/          TLS-терминация + gen-certs.sh
 Makefile        стенды dev/prod, проверки, e2e, контроль хардкода (`make help`)

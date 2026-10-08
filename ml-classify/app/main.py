@@ -1,7 +1,8 @@
-"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + GigaChat-инференс.
+"""svc-classify: эвристика + токсик-фильтр (транслит/обфускация) + LLM-инференс.
 
-LLM: GigaChat (внешний API, ключ — только env GIGACHAT_API_KEY).
-Ловит семантические парафразы без ключевых слов. Ключа/сети/пакета нет —
+LLM: Mistral через OpenRouter (primary, ключ — только env OPENROUTER_API_KEY),
+при его падении — GigaChat (ключ — только env GIGACHAT_API_KEY).
+Ловит семантические парафразы без ключевых слов. Ключей/сети нет —
 работает детерминированный rule-based fallback (как раньше без файла модели).
 """
 import re
@@ -13,7 +14,6 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from .semantic import MODEL as SEMANTIC_MODEL
-from .semantic import MODEL_NAME
 from .prototypes import RU_CATEGORY, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
 # Вето семантики над слабым эвристическим сигналом: разборчивый ответ NONE от SLM
@@ -256,6 +256,8 @@ def run_startup_tests() -> None:
     # Семантическое вето слабого сигнала (ложный карантин «менделеев + хлор»):
     # детерминировано, без сети — explain подменяется стабом, в конце restore.
     failed += run_veto_startup_tests()
+    # Роутер Mistral->GigaChat: fallback и его логи (стабы провайдеров, без сети).
+    failed += run_router_startup_tests()
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
     failed += run_semantic_startup_tests()
     # Формат комментария SLM для шторки: одна строка, стабильные маркеры.
@@ -323,6 +325,92 @@ def run_veto_startup_tests() -> int:
         cls.available = orig_available  # type: ignore
     if not failed:
         print("[VETO TEST] слабый сигнал гасится, 5 анти-кейсов держат карантин", flush=True)
+    return failed
+
+
+def run_router_startup_tests() -> int:
+    """Роутер Mistral->GigaChat БЕЗ сети: стабы провайдеров + перехват логов.
+    Новое правило — сначала тест-кейс, потом код (§4 AGENTS.md).
+    1. Mistral-timeout -> вердикт GigaChat + warning 'mistral fallback' с reason=timeout.
+    2. Mistral-ok -> вердикт Mistral, fallback-строк в логах нет.
+    3. Оба мертвы -> (NONE, 0.0, 0.0) + 'both providers failed' (fail-closed)."""
+    import logging as _logging
+
+    from . import semantic as _sem
+    failed = 0
+    model = SEMANTIC_MODEL
+    orig_m, orig_g, orig_loaded = model._mistral, model._giga, model.loaded
+    records: list[str] = []
+
+    class _Cap(_logging.Handler):
+        def emit(self, record: _logging.LogRecord) -> None:
+            records.append(record.getMessage())
+
+    cap = _Cap()
+    slog = _logging.getLogger("safemail.classify.semantic")
+    old_level = slog.level
+    slog.addHandler(cap)
+    slog.setLevel(_logging.DEBUG)
+
+    class _Fake:
+        def __init__(self, result: tuple[str, float] | None = None,
+                     error: Exception | None = None) -> None:
+            self.available = True
+            self._result = result
+            self._error = error
+
+        def classify(self, text: str) -> tuple[str, float]:
+            if self._error is not None:
+                raise self._error
+            assert self._result is not None
+            return self._result
+
+    try:
+        model.loaded = True
+        # 1. Mistral падает -> GigaChat + warning-лог с причиной.
+        model._mistral = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
+        model._giga = _Fake(result=("OTHER_THREAT", 0.8))  # type: ignore
+        records.clear()
+        got = model.explain("тестовое письмо про поджог")
+        if got[:2] != ("OTHER_THREAT", 0.8):
+            print(f"[TEST FAIL] router fallback got {got}", flush=True)
+            failed += 1
+        if not any("mistral fallback" in m and "reason=timeout" in m for m in records):
+            print(f"[TEST FAIL] router fallback log missing: {records}", flush=True)
+            failed += 1
+        if model.counters.get("mistral_fallback", 0) < 1:
+            print("[TEST FAIL] router mistral_fallback counter not bumped", flush=True)
+            failed += 1
+        # 2. Mistral жив -> его вердикт, fallback-строк нет.
+        model._mistral = _Fake(result=("NONE", 0.05))  # type: ignore
+        records.clear()
+        got2 = model.explain("обычное письмо про совещание")
+        if got2[0] != "NONE":
+            print(f"[TEST FAIL] router mistral-ok got {got2}", flush=True)
+            failed += 1
+        if any("mistral fallback" in m for m in records):
+            print(f"[TEST FAIL] router mistral-ok logged fallback: {records}", flush=True)
+            failed += 1
+        # 3. Оба мертвы -> нули + error-лог (карантин через эвристику сохранится).
+        model._mistral = _Fake(error=_sem.ProviderError("timeout"))  # type: ignore
+        model._giga = _Fake(error=_sem.ProviderError("http_5xx"))  # type: ignore
+        records.clear()
+        got3 = model.explain("что-то")
+        if got3 != ("NONE", 0.0, 0.0, None):
+            print(f"[TEST FAIL] router both-dead got {got3}", flush=True)
+            failed += 1
+        if not any("both providers failed" in m for m in records):
+            print(f"[TEST FAIL] router both-dead log missing: {records}", flush=True)
+            failed += 1
+    finally:
+        model._mistral, model._giga, model.loaded = orig_m, orig_g, orig_loaded
+        with model._lock:
+            for k in model._counters:
+                model._counters[k] = 0
+        slog.removeHandler(cap)
+        slog.setLevel(old_level)
+    if not failed:
+        print("[ROUTER TEST] mistral->gigachat fallback + логи в порядке", flush=True)
     return failed
 
 
@@ -473,6 +561,8 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
         sem_best, sem_raw, sem_none, sem_nearest, vetoed=veto)
     if not SEMANTIC_MODEL.available or (sem_cat == "NONE" and sem_score == 0.0):
         return (category, score, flags, explanation, "NONE", 0.0, comment)
+    # Видно в шторке /admin, кто дал семантику (additive-флаг, фронт null-safe).
+    flags = flags + [f"semantic-provider:{SEMANTIC_MODEL.last_provider}"]
     if veto:
         flags = flags + [f"semantic-veto:{category.lower()}:{score:.2f}"]
         explanation = (f"{explanation} Слабый сигнал снят семантикой: "
@@ -502,9 +592,9 @@ async def lifespan(app: FastAPI):
     SEMANTIC_MODEL.load()
     run_startup_tests()
     if SEMANTIC_MODEL.available:
-        print(f"[INIT] GigaChat-инференс активен ({MODEL_NAME})", flush=True)
+        print(f"[INIT] Семантика активна ({SEMANTIC_MODEL.active_name})", flush=True)
     else:
-        print("[INIT] GigaChat не настроен — работает rule-based fallback", flush=True)
+        print("[INIT] Провайдеры не настроены — работает rule-based fallback", flush=True)
     yield
 
 
@@ -512,8 +602,9 @@ app = FastAPI(title="safemail-classify", lifespan=lifespan)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "classify"}
+def health() -> dict[str, Any]:
+    return {"status": "ok", "service": "classify",
+            "semantic": SEMANTIC_MODEL.counters}
 
 
 @app.post("/internal/classify-threat")
@@ -546,5 +637,5 @@ def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
         "semantic_category": sem_cat,
         "semantic_score": sem_score,
         "semantic_comment": sem_comment,
-        "model": MODEL_NAME if SEMANTIC_MODEL.available else "none",
+        "model": SEMANTIC_MODEL.active_name if SEMANTIC_MODEL.available else "none",
     }

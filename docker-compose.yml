@@ -42,8 +42,11 @@ services:
       - "8003:8003"
     environment:
       - PORT=8003
-      # Внешний LLM вместо локальной SLM: ключ только из .env (в репо не коммитить).
+      # Внешние LLM вместо локальной SLM: ключи только из .env (в репо не коммитить).
+      # Mistral через OpenRouter — primary, GigaChat — fallback при его падении.
       # Пусто/нет сети — сервис стартует в rule-based fallback (эвристика главная).
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-}
       - GIGACHAT_API_KEY=${GIGACHAT_API_KEY:-}
     restart: unless-stopped
 

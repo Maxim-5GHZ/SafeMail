@@ -1,6 +1,7 @@
 fastapi==0.115.6
 uvicorn==0.34.0
-# LLM-инференс через GigaChat (внешний API).
-# Локальной SLM/ONNX больше нет: torch/onnxruntime/transformers не нужны,
-# лимит 4 ГБ RAM автоматически соблюдён. Без GIGACHAT_API_KEY — rule-based fallback.
+httpx==0.28.1
+# LLM-инференс: Mistral через OpenRouter (primary) + GigaChat (fallback).
+# Локальной SLM/ONNX нет: torch/onnxruntime/transformers не нужны,
+# лимит 4 ГБ RAM автоматически соблюдён. Без ключей — rule-based fallback.
 gigachat==0.1.28

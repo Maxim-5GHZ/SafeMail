@@ -1,6 +1,7 @@
 # ml-classify: одностадийная сборка — локальной SLM больше нет.
-# Инференс идёт через внешний GigaChat API (ключ — env GIGACHAT_API_KEY).
-# Без ключа/сети сервис стартует и работает в rule-based fallback.
+# Инференс: Mistral через OpenRouter (primary, env OPENROUTER_API_KEY)
+# + GigaChat (fallback, env GIGACHAT_API_KEY).
+# Без ключей/сети сервис стартует и работает в rule-based fallback.
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt ./
