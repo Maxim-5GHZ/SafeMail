@@ -199,6 +199,26 @@ def heuristic_scan(normalized: str, stopwords: list[StopwordRule] | None = None)
         return ("NONE", 0.05, flags, highlights[:5])
     best = max(hits, key=lambda k: hits[k])
     score = min(0.55 + 0.15 * hits[best] + (0.1 if toxic else 0.0), 0.98)
+    # Контекстное ослабление «хлора»: одиночный бытовой маркер (закупка хлора
+    # для бассейна, тема+тело дают 2 попадания и 0.85) — не техногенная авария.
+    # Режем до слабого 0.6 флагом context:domestic-chlorine, чтобы semantic-veto
+    # при чистом NONE его гасило. Условия строгие: только MAN_MADE, только маркер
+    # «хлор» (без цистерн/перегона/аварии и др.), бытовой контекст и ни одного
+    # тревожного слова (выброс/утечка/сход...). Иначе — как раньше, в карантин.
+    if best == "MAN_MADE" and set(hits) == {"MAN_MADE"}:
+        mm_flags = [f for f in flags if f.startswith("man_made:")]
+        if mm_flags and all("хлор" in f for f in mm_flags):
+            domestic = re.search(
+                r"бассейн|закуп|заказ|дезинфе|убор|таблетк|фильтр|постав|"
+                r"сч[её]т|оплат|тендер|склад|чист|\bкг\b|литр",
+                normalized, re.IGNORECASE)
+            alarm = re.search(
+                r"выброс|утечк|авари|сход|цистерн|перегон|диверси|заражен|"
+                r"поражен|облак|отрав|разлив",
+                normalized, re.IGNORECASE)
+            if domestic and not alarm:
+                score = min(score, 0.6)
+                flags.append("context:domestic-chlorine")
     # Мат сам по себе без угроз — не угроза по ТЗ, а OTHER только при контексте угрозы
     if best == "ILLEGAL_ACTIONS" or toxic:
         pass
@@ -348,10 +368,19 @@ def run_veto_startup_tests() -> int:
         # вето смотрит на none-скор, а не на raw.
         SEMANTIC_MODEL.explain = lambda text: ("NONE", 0.05, 0.9, None)  # type: ignore
         check("chemistry", "выучи таблицу менделеева и овр с хлором", [], "NONE", True)
+        # Бытовой хлор с двойным попаданием (тема+тело дают 0.85): контекстное
+        # ослабление режет до 0.6 — вето гасит, иначе закупка хлора для бассейна
+        # уходит в карантин как MAN_MADE.
+        check("domestic-chlorine", "Заказ: 15 кг хлора для бассейна. Срочно. Хлор для бассейна",
+              [], "NONE", True)
         check("no-veto-stopword", "на складе хранится взрывчатка, забирай",
               sw_rules, "TERRORISM", False)
         check("no-veto-toxic", "это полный пиздец с хлором", [], "MAN_MADE", False)
         check("no-veto-strong", "на перегоне сход цистерн с хлором", [], "MAN_MADE", False)
+        # Тревожный хлор с двойным попаданием: alarm-слово блочит ослабление —
+        # сильный сигнал держит карантин даже при чистом NONE семантики.
+        check("no-veto-alarm-chlorine", "выброс хлора над районом, повторю: выброс хлора",
+              [], "MAN_MADE", False)
         # Фаза 2: семантика подтверждает угрозу — вето нет, согласие (max).
         SEMANTIC_MODEL.explain = lambda text: ("MAN_MADE", 0.9, 0.1, None)  # type: ignore
         check("no-veto-agree", "выучи таблицу менделеева и овр с хлором",
@@ -365,7 +394,7 @@ def run_veto_startup_tests() -> int:
         SEMANTIC_MODEL.explain = orig_explain  # type: ignore
         cls.available = orig_available  # type: ignore
     if not failed:
-        print("[VETO TEST] слабый сигнал гасится, 5 анти-кейсов держат карантин", flush=True)
+        print("[VETO TEST] слабый сигнал и бытовой хлор гасятся, 5 анти-кейсов держат карантин", flush=True)
     return failed
 
 
