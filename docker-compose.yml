@@ -76,6 +76,8 @@ services:
       - ENRICH_URL=http://ml-enrich:8002
       - CLASSIFY_URL=http://ml-classify:8003
       - JWT_SECRET=${JWT_SECRET:-change-me-to-32-chars-minimum-secret}
+      # MVP-админ admin@primary (AdminBootstrap): без переменной пароль будет admin
+      - APP_ADMIN_PASSWORD=${APP_ADMIN_PASSWORD:-admin}
       # Исходящий relay (MVP-фейк): чистые письма и карантин уходят сюда
       - MAIL_RELAY_HOST=mailhog
       - MAIL_RELAY_PORT=1025
