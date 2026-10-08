@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useAuth, homeForRole, roleOf } from '@/lib/auth';
 import { LogoMark } from '@/components/Logo';
 import PipelineDiagram from '@/components/PipelineDiagram';
-import { GovIcon, BankIcon, FactoryIcon, CorpIcon, WarnIcon, SearchIcon, MaskIcon, ShieldIcon, UserIcon, HackerIcon, LightningIcon } from '@/components/icons';
+import { GovIcon, BankIcon, FactoryIcon, CorpIcon, WarnIcon, SearchIcon, MaskIcon, ShieldIcon, UserIcon, HackerIcon, LightningIcon, CloudIcon, CheckIcon } from '@/components/icons';
 
 interface Slide {
   id: string;
@@ -137,17 +137,19 @@ function UserJourneyStaircase() {
     }
   ];
 
+  // Отступы лесенки — чистый CSS (без window.innerWidth: SSR/зум стабильны,
+  // последний шаг 36% + ширина карточки не вылезают за контейнер).
+  const indents = ['md:ml-0', 'md:ml-[12%]', 'md:ml-[24%]', 'md:ml-[36%]'];
+
   return (
     <div className="w-full max-w-5xl flex flex-col md:flex-row gap-8 items-center bg-slate-900/40 p-6 rounded-3xl border border-white/5 backdrop-blur-md">
-      <div className="flex-1 flex flex-col w-full relative">
-        <div className="absolute left-7 top-7 bottom-7 w-0.5 bg-slate-800 hidden md:block" />
+      <div className="flex-1 flex flex-col w-full relative min-w-0">
         {steps.map((step, idx) => (
           <div 
             key={idx} 
-            className={`relative flex items-center gap-5 p-4 cursor-pointer transition-all duration-500 rounded-2xl ${
-              activeStep === idx ? 'bg-white/10 scale-105 shadow-xl z-10 border border-white/10' : 'hover:bg-white/5 opacity-50 hover:opacity-80'
+            className={`relative flex items-center gap-5 p-4 cursor-pointer transition-all duration-500 rounded-2xl min-w-0 ${indents[idx]} ${
+              activeStep === idx ? 'bg-white/10 shadow-xl z-10 border border-white/10' : 'hover:bg-white/5 opacity-50 hover:opacity-80'
             }`}
-            style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 ? `${idx * 15}%` : '0' }}
             onClick={() => setActiveStep(idx)}
             onMouseEnter={() => setActiveStep(idx)}
           >
@@ -156,9 +158,9 @@ function UserJourneyStaircase() {
             }`}>
               {step.icon}
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="font-bold text-white text-base tracking-wide">{step.title}</div>
-              <div className="text-sm text-slate-400 mt-1 max-w-[220px] leading-relaxed">{step.desc}</div>
+              <div className="text-sm text-slate-400 mt-1 max-w-[240px] leading-relaxed">{step.desc}</div>
             </div>
           </div>
         ))}
@@ -253,27 +255,27 @@ function TargetAudienceSimulator() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-slate-900/40 border border-blue-500/30 rounded-2xl p-5 relative overflow-hidden group">
           <h3 className="text-xl font-black text-white mb-2 flex items-center gap-2">
-            <span className="text-blue-400">☁️</span> Облако (SaaS / API)
+            <span className="text-blue-400 [&>svg]:w-6 [&>svg]:h-6"><CloudIcon /></span> Облако (SaaS / API)
           </h3>
           <p className="text-base text-slate-400 mb-4 leading-relaxed">
             Быстрый старт по подписке (B2B). Вы просто прописываете нас как MX-запись или отправляете текст по API.
           </p>
           <ul className="text-sm text-slate-300 space-y-2">
-            <li className="flex items-center gap-2">✓ Интеграция за 10 минут</li>
-            <li className="flex items-center gap-2">✓ Оплата за объем писем или пользователей</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Интеграция за 10 минут</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Оплата за объем писем или пользователей</li>
           </ul>
         </div>
 
         <div className="bg-slate-900/40 border border-emerald-500/30 rounded-2xl p-5 relative overflow-hidden group">
           <h3 className="text-xl font-black text-white mb-2 flex items-center gap-2">
-            <span className="text-emerald-400">🏢</span> On-Premise (В контуре)
+            <span className="text-emerald-400 [&>svg]:w-6 [&>svg]:h-6"><CorpIcon /></span> On-Premise (В контуре)
           </h3>
           <p className="text-base text-slate-400 mb-4 leading-relaxed">
             Установка на ваши серверы. Никакие данные не покидают закрытый контур компании (Enterprise).
           </p>
           <ul className="text-sm text-slate-300 space-y-2">
-            <li className="flex items-center gap-2">✓ Полная изоляция данных (152-ФЗ)</li>
-            <li className="flex items-center gap-2">✓ Работает на обычных CPU серверах</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Полная изоляция данных (152-ФЗ)</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Работает на обычных CPU серверах</li>
           </ul>
         </div>
       </div>
@@ -424,7 +426,7 @@ export default function PresentationPage() {
   const { token } = useAuth();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
   const touchStartY = useRef<number>(0);
   const lastScrollTime = useRef<number>(0);
 
@@ -481,25 +483,25 @@ export default function PresentationPage() {
       subtitle:
         'Наша архитектура создана для бизнеса: никаких скрытых плат за облачные токены или закупку дорогих видеокарт.',
       content: (
-        <div className="flex flex-col gap-6 w-full items-center">
+        <div className="flex flex-col gap-4 w-full items-center">
           <PipelineDiagram />
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-5xl">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-5 flex items-center gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-5xl">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-4">
               <div className="w-14 h-14 shrink-0 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-mono font-black text-xl">CPU</div>
               <div>
                 <h3 className="text-white font-bold text-base">Обычные серверы (Без GPU)</h3>
                 <p className="text-slate-400 text-sm mt-1 leading-relaxed">Модель оптимизирована (SLM). Запускается на типовом железе предприятия без покупки мощных видеокарт.</p>
               </div>
             </div>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-5 flex items-center gap-4">
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-center gap-4">
               <div className="w-14 h-14 shrink-0 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400 font-mono font-black text-2xl">0₽</div>
               <div>
                 <h3 className="text-white font-bold text-base">Без дорогих подписок</h3>
                 <p className="text-slate-400 text-sm mt-1 leading-relaxed">Локальный инференс. Вам не нужно платить за каждый токен сторонним API (как ChatGPT).</p>
               </div>
             </div>
-            <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-5 flex items-center gap-4">
+            <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 flex items-center gap-4">
               <div className="w-14 h-14 shrink-0 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400"><LightningIcon className="w-8 h-8" /></div>
               <div>
                 <h3 className="text-white font-bold text-base">Zero-Latency</h3>
@@ -567,6 +569,14 @@ export default function PresentationPage() {
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
+      // Если контент слайда выше вьюпорта (зум), сначала даём домотать его
+      // нативным скроллом — и только на краю переключаем слайд.
+      const el = containerRef.current;
+      if (el) {
+        const canDown = el.scrollHeight - el.scrollTop - el.clientHeight > 4;
+        const canUp = el.scrollTop > 4;
+        if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return;
+      }
       e.preventDefault();
       const now = Date.now();
       if (now - lastScrollTime.current < 700) return;
@@ -623,7 +633,6 @@ export default function PresentationPage() {
 
   return (
     <div
-      ref={containerRef}
       className="relative w-screen h-screen overflow-hidden bg-slate-950 text-white select-none font-sans"
     >
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -676,25 +685,27 @@ export default function PresentationPage() {
         </div>
       </header>
 
-      <main className="relative z-10 w-full h-full flex flex-col justify-center items-center px-6 sm:px-12 pt-20 pb-16 max-w-7xl mx-auto overflow-y-auto no-scrollbar">
+      {/* Безопасное центрирование: без justify-center (иначе верх переполненного
+          слайда уходит за шапку и недоступен), центрит m-auto на контенте. */}
+      <main ref={containerRef} className="relative z-10 w-full h-full flex flex-col items-center px-6 sm:px-12 pt-20 pb-16 max-w-7xl mx-auto overflow-y-auto no-scrollbar">
         <div
           key={current.id}
           className="w-full m-auto flex flex-col items-center transition-all duration-700 ease-out transform animate-fadeIn"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-xs font-mono uppercase tracking-wider text-blue-400 mb-3 shadow-sm backdrop-blur-md">
+          <div className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-xs font-mono uppercase tracking-wider text-blue-400 mb-3 shadow-sm backdrop-blur-md">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
             <span>{current.badge}</span>
           </div>
 
-          <h1 className="text-2xl sm:text-4xl lg:text-[40px] font-black text-center text-white tracking-tight max-w-4xl leading-[1.15] mb-3">
+          <h1 className="shrink-0 text-2xl sm:text-4xl lg:text-[40px] font-black text-center text-white tracking-tight max-w-4xl leading-[1.15] mb-3 text-balance">
             {current.title}
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-400 text-center max-w-3xl leading-relaxed mb-6">
+          <p className="shrink-0 text-sm sm:text-base text-slate-400 text-center max-w-3xl leading-relaxed mb-6 text-balance">
             {current.subtitle}
           </p>
 
-          <div className="w-full flex justify-center">{current.content}</div>
+          <div className="shrink-0 w-full flex justify-center">{current.content}</div>
         </div>
       </main>
 

@@ -106,7 +106,7 @@ function DesktopScheme({ activeStep }: { activeStep: ScenarioStep | null }) {
 
   return (
     // Еще расширили viewBox сверху (-120), чтобы огромные бабблы точно влезли
-    <svg viewBox="0 -120 1400 600" className="w-full h-auto max-h-[50vh]" preserveAspectRatio="xMidYMid meet">
+    <svg viewBox="0 -120 1400 600" className="w-full h-auto max-h-[44vh]" preserveAspectRatio="xMidYMid meet">
       <defs>
         <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0 0L10 5L0 10z" fill="#475569" />
@@ -227,7 +227,7 @@ export default function PipelineDiagram() {
     <div className="w-full max-w-6xl flex flex-col items-center">
       
       {/* Кнопки управления симуляцией */}
-      <div className="flex flex-wrap justify-center gap-3 mb-6 relative z-10">
+      <div className="flex flex-wrap justify-center gap-3 mb-4 relative z-10">
         <span className="flex items-center text-xs font-mono uppercase text-slate-500 mr-2 tracking-widest">
           Симуляция:
         </span>

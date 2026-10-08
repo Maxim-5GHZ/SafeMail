@@ -138,3 +138,19 @@ export function LightningIcon({ className = 'w-6 h-6' }: { className?: string })
     </svg>
   );
 }
+
+export function CloudIcon({ className = 'w-6 h-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className={className} aria-hidden>
+      <path d="M6 15.5h8.5a3.5 3.5 0 00.6-6.95A5 5 0 005.3 9.7 3 3 0 006 15.5z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ className = 'w-4 h-4' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="M4.5 10.5l4 4 7-8.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
