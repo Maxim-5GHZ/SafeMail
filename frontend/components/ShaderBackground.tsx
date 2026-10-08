@@ -15,7 +15,14 @@ export default function ShaderBackground() {
         return;
         }
 
-        navigator.gpu
+        // WebGPU-типов в DOM-lib нет — через unknown-каст, без any по коду.
+        const gpu = (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+        if (!gpu) {
+          setHasWebGPU(false);
+          return;
+        }
+
+        gpu
         .requestAdapter()
         .then((adapter) => {
             if (alive) setHasWebGPU(adapter !== null);

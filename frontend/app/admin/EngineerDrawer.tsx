@@ -75,18 +75,7 @@ function parseTriggerTag(flag: string): {
   if (hidden) return { type: 'Скрытые символы', value: `${hidden[1]} шт.`, severity: 'medium' };
 
   const att = /^attachment:(.+)$/i.exec(flag);
-<<<<<<< Updated upstream
-  if (att) {
-    return {
-      type: 'ВЛОЖЕНИЕ',
-      value: attachmentReasonLabel(att[1]),
-      badgeCls: 'bg-red-100 text-red-800 border-red-300',
-    };
-  }
-=======
-  if (att) return { type: 'Вложение', value: att[1], severity: 'high' };
-
->>>>>>> Stashed changes
+  if (att) return { type: 'Вложение', value: attachmentReasonLabel(att[1]), severity: 'high' };
   const m = /^(stopword|profanity|terrorism|man_made|illegal_actions|other_threat):(.*)$/i.exec(flag);
   if (!m) return { type: 'Сигнатура', value: flag, severity: 'high' };
 

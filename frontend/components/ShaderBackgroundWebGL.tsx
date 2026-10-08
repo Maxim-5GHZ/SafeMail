@@ -86,6 +86,7 @@ export default function ShaderBackgroundWebGL() {
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
+        const el: HTMLDivElement = container;
 
         let renderer: Renderer;
         try {
@@ -116,8 +117,8 @@ export default function ShaderBackgroundWebGL() {
         const mesh = new Mesh(gl, { geometry, program });
 
         function resize() {
-        const w = container.clientWidth;
-        const h = container.clientHeight;
+        const w = el.clientWidth;
+        const h = el.clientHeight;
         renderer.setSize(w, h);
         program.uniforms.uResolution.value = [w * renderer.dpr, h * renderer.dpr];
         }

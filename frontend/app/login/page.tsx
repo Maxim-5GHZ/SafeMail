@@ -2,11 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-<<<<<<< Updated upstream
 import Link from 'next/link';
-=======
 import { Mail, Lock, User, LogIn, UserPlus } from 'lucide-react';
->>>>>>> Stashed changes
 import { useAuth, homeForRole, roleOf, storedRole } from '@/lib/auth';
 import { ApiError, getPublicConfig } from '@/lib/api';
 import { LogoFull } from '@/components/Logo';
@@ -60,10 +57,6 @@ export default function LoginPage() {
   };
 
   return (
-<<<<<<< Updated upstream
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 gap-4">
-      <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-xl shadow p-6 flex flex-col gap-3">
-=======
     <div className="relative flex items-center justify-center min-h-screen px-4 overflow-hidden">
       <ShaderBackground />
 
@@ -74,12 +67,11 @@ export default function LoginPage() {
 
       <form
         onSubmit={submit}
-        className="relative z-10 w-1/3 p-6 flex flex-col gap-3 rounded-2xl
+        className="relative z-10 w-full max-w-sm p-6 flex flex-col gap-3 rounded-2xl
                    bg-white/30 backdrop-blur-2xl backdrop-saturate-150
                    border border-white/50
                    shadow-[0_8px_32px_rgba(31,38,135,0.12),inset_0_1px_0_rgba(255,255,255,0.85)]"
       >
->>>>>>> Stashed changes
         <div className="flex justify-center">
           <LogoFull />
         </div>
@@ -227,7 +219,7 @@ export default function LoginPage() {
           {busy ? '…' : mode === 'login' ? 'Войти' : 'Создать ящик'}
         </button>
       </form>
-      <Link href="/" className="text-sm text-gray-500 hover:text-blue-600 transition-colors">
+      <Link href="/" className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 text-sm text-gray-500 hover:text-blue-600 transition-colors">
         ← Назад к презентации
       </Link>
     </div>
