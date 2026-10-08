@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from .semantic import MODEL as SEMANTIC_MODEL
 from .semantic import MODEL_NAME
+from .prototypes import RU_CATEGORY, SEMANTIC_MARGIN, SEMANTIC_THRESHOLD
 
 
 class ToxicityAndProfanityFilter:
@@ -213,6 +214,8 @@ def run_startup_tests() -> None:
         failed += 1
     # Семантика (ONNX): парафразы без ключевых слов. Модели нет — skip (fallback легален).
     failed += run_semantic_startup_tests()
+    # Формат комментария SLM для шторки: одна строка, стабильные маркеры.
+    failed += run_semantic_comment_tests()
     if failed:
         print(f"[INIT FAIL] {failed} тестов провалено", flush=True)
         sys.exit(1)
@@ -248,10 +251,73 @@ def run_semantic_startup_tests() -> int:
     return failed
 
 
+def build_semantic_comment(available: bool, hei_category: str, strong_heu: bool,
+                           caught: bool, best: str, score: float, none: float,
+                           nearest: str | None) -> str:
+    """Человекочитаемый итог SLM для шторки /admin. Всегда одна строка,
+    категории — по-русски, ниже порога — честно «не повлияло», а не «видит»."""
+    if not available:
+        return "SLM недоступна — вердикт по эвристике (fallback)."
+    ru = RU_CATEGORY.get(best, best)
+    if caught:
+        margin = score - none
+        proto = f" — ближайший эталон: «{nearest}»" if nearest else ""
+        return f"SLM поймала парафраз: {ru} ({score:.2f}, маржа над нормой {margin:.2f}){proto}."
+    if strong_heu and best == hei_category and best != "NONE":
+        return f"SLM подтверждает: {ru} ({score:.2f})."
+    if best == "NONE":
+        return f"SLM угроз не видит (норма {none:.2f})."
+    return (f"SLM: ближе всего {ru} ({score:.2f}) — ниже порога "
+            f"{SEMANTIC_THRESHOLD:.2f}, на вердикт не повлияло.")
+
+
+def run_semantic_comment_tests() -> int:
+    """Кейсы формата semantic_comment (идёт в шторку /admin отдельной строкой)."""
+    # Ветка fallback проверяется без модели.
+    fb = build_semantic_comment(False, "NONE", False, False, "NONE", 0.0, 0.0, None)
+    if "недоступна" not in fb:
+        print(f"[SEMANTIC COMMENT FAIL] fallback: {fb!r}", flush=True)
+        return 1
+    if not SEMANTIC_MODEL.available:
+        print("[SEMANTIC COMMENT TEST] Модель не загружена — skip", flush=True)
+        return 0
+    failed = 0
+    # 1. Парафраз пойман при NONE эвристики → «поймала парафраз» + эталон.
+    cat, score, flags, _, _, _, comment = fuse_verdict(
+        "NONE", 0.05, [], "Маркеры угроз не обнаружены.",
+        FILTER.normalize("оставлю рюкзак с сюрпризом в торговом центре"))
+    if cat == "NONE" or "поймала парафраз" not in comment or "ближайший эталон" not in comment:
+        print(f"[SEMANTIC COMMENT FAIL] caught: {cat}/{comment!r}", flush=True)
+        failed += 1
+    # 2. Чистый текст → «угроз не видит».
+    _, _, _, _, _, _, comment2 = fuse_verdict(
+        "NONE", 0.05, [], "Маркеры угроз не обнаружены.",
+        FILTER.normalize("напоминаю про совещание завтра в девять"))
+    if "угроз не видит" not in comment2:
+        print(f"[SEMANTIC COMMENT FAIL] clean: {comment2!r}", flush=True)
+        failed += 1
+    # 3. Сильная эвристика → комментарий одной строкой, вердикт эвристики.
+    cat3, _, _, _, _, _, comment3 = fuse_verdict(
+        "TERRORISM", 0.9, ["stopword:взрывчатка"], "Сработало стоп-слово.",
+        FILTER.normalize("на складе хранится взрывчатка, забирай"))
+    if cat3 != "TERRORISM" or not comment3.startswith("SLM") or "\n" in comment3:
+        print(f"[SEMANTIC COMMENT FAIL] strong: {cat3}/{comment3!r}", flush=True)
+        failed += 1
+    # 4. Ниже порога → честная формулировка + русская категория, без сырого enum.
+    low = build_semantic_comment(True, "OTHER_THREAT", True, False, "MAN_MADE", 0.43, 0.55, None)
+    if "ниже порога" not in low or "MAN_MADE" in low or "техногенную аварию" not in low:
+        print(f"[SEMANTIC COMMENT FAIL] below-threshold: {low!r}", flush=True)
+        failed += 1
+    if not failed:
+        print("[SEMANTIC COMMENT TEST] 4/4 формата комментария в порядке", flush=True)
+    return failed
+
+
 def fuse_verdict(category: str, score: float, flags: list[str], explanation: str,
-                 normalized: str) -> tuple[str, float, list[str], str, str, float]:
+                 normalized: str) -> tuple[str, float, list[str], str, str, float, str]:
     """Фьюжн эвристики и семантики. Возвращает
-    (final_category, final_confidence, flags, explanation, semantic_category, semantic_score).
+    (final_category, final_confidence, flags, explanation,
+     semantic_category, semantic_score, semantic_comment).
 
     Правила (эвристика — главная, детерминизм для жюри):
     1. stopword или высокоуверенная эвристика (>=0.75) — побеждает, семантика лишь подтверждает.
@@ -260,28 +326,35 @@ def fuse_verdict(category: str, score: float, flags: list[str], explanation: str
     4. Конфликт — побеждает эвристика, оба сигнала фиксируются в explanation.
     5. Модели нет — чистый эвристический вердикт (как раньше).
     """
-    sem_cat, sem_score = SEMANTIC_MODEL.predict(normalized)
+    sem_best, sem_raw, sem_none, sem_nearest = SEMANTIC_MODEL.explain(normalized)
+    caught = (sem_best != "NONE" and sem_raw >= SEMANTIC_THRESHOLD
+              and sem_raw - sem_none >= SEMANTIC_MARGIN)
+    sem_cat = sem_best if (caught or sem_best == "NONE") else "NONE"
+    sem_score = sem_raw
     if sem_cat != "NONE":
         flags = flags + [f"semantic:{sem_cat.lower()}:{sem_score:.2f}"]
-    if not SEMANTIC_MODEL.available or (sem_cat == "NONE" and sem_score == 0.0):
-        return (category, score, flags, explanation, "NONE", 0.0)
     strong_heu = category != "NONE" and (
         score >= 0.75 or any(f.startswith("stopword:") for f in flags))
+    comment = build_semantic_comment(
+        SEMANTIC_MODEL.available, category, strong_heu, caught,
+        sem_best, sem_raw, sem_none, sem_nearest)
+    if not SEMANTIC_MODEL.available or (sem_cat == "NONE" and sem_score == 0.0):
+        return (category, score, flags, explanation, "NONE", 0.0, comment)
     if strong_heu:
         if sem_cat == category and sem_cat != "NONE":
             explanation += f" Семантика подтверждает ({sem_score:.2f})."
-        return (category, score, flags, explanation, sem_cat, sem_score)
+        return (category, score, flags, explanation, sem_cat, sem_score, comment)
     if category == "NONE":
         explanation = (f"Семантический инференс ({MODEL_NAME}): {explanation} "
-                       f"Парафраз угрозы «{sem_cat}» ({sem_score:.2f}).")
-        return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score)
+                       f"Парафраз: {RU_CATEGORY.get(sem_cat, sem_cat)} ({sem_score:.2f}).")
+        return (sem_cat, sem_score, flags, explanation, sem_cat, sem_score, comment)
     if sem_cat == category:
         return (category, max(score, sem_score), flags,
                 explanation + f" Семантика согласна ({sem_score:.2f}).",
-                sem_cat, sem_score)
+                sem_cat, sem_score, comment)
     return (category, score, flags,
-            explanation + f" Семантика видит «{sem_cat}» ({sem_score:.2f}), оставлен вердикт эвристики.",
-            sem_cat, sem_score)
+            explanation + f" Семантика: {RU_CATEGORY.get(sem_cat, sem_cat)} ({sem_score:.2f}), оставлен вердикт эвристики.",
+            sem_cat, sem_score, comment)
 
 
 @asynccontextmanager
@@ -323,7 +396,7 @@ def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
     if sw_flag is not None:
         explanation = f"Сработало управляемое стоп-слово «{sw_flag.split(':', 1)[1]}»."
     heuristic_score = score
-    category, score, flags, explanation, sem_cat, sem_score = fuse_verdict(
+    category, score, flags, explanation, sem_cat, sem_score, sem_comment = fuse_verdict(
         category, score, flags, explanation, normalized)
     return {
         "category": category,
@@ -334,5 +407,6 @@ def classify_threat(req: ClassifyRequest) -> dict[str, Any]:
         "highlight_phrases": highlights,
         "semantic_category": sem_cat,
         "semantic_score": sem_score,
+        "semantic_comment": sem_comment,
         "model": MODEL_NAME if SEMANTIC_MODEL.available else "none",
     }

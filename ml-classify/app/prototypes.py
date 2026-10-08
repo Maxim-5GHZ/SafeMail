@@ -57,6 +57,16 @@ PROTOTYPES: dict[str, list[str]] = {
 
 CATEGORIES = ("TERRORISM", "MAN_MADE", "ILLEGAL_ACTIONS", "OTHER_THREAT", "NONE")
 
+# Русские подписи категорий для комментария SLM (в шторку /admin).
+# Сырой enum в пользовательский текст не вставлять (иначе «видит MAN_MADE»).
+RU_CATEGORY = {
+    "TERRORISM": "терроризм",
+    "MAN_MADE": "техногенную аварию",
+    "ILLEGAL_ACTIONS": "противоправные действия",
+    "OTHER_THREAT": "иную угрозу",
+    "NONE": "норму",
+}
+
 # Порог уверенности kNN-max и минимальная маржа над NONE.
 # Подобраны на прототипе (cointegrated/rubert-tiny2, 15 кейсов, 12/15):
 # все 6 чистых писем корректно остались NONE (критично: чистая почта не блокируется).

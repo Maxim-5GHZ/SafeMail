@@ -65,5 +65,9 @@ public class MessageDto {
     private Double heuristicScore;
     private List<String> heuristicFlags;
     private Object spellerFixes;
+    /** Сырой вердикт SLM + комментарий (шторка /admin; получателю не видно). */
+    private ThreatCategory semanticCategory;
+    private Double semanticScore;
+    private String semanticComment;
   }
 }

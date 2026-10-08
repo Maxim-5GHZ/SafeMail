@@ -84,7 +84,9 @@ class InboundPipelineRouterTest {
                 "speller_fixes", List.of()), HttpStatus.OK);
           }
           return new ResponseEntity<>(Map.of("category", category, "confidence", 0.9,
-              "explanation", "t", "heuristic_score", 0.1, "heuristic_flags", List.of()),
+              "explanation", "t", "heuristic_score", 0.1, "heuristic_flags", List.of(),
+              "semantic_category", "TERRORISM", "semantic_score", 0.83,
+              "semantic_comment", "SLM поймала парафраз «TERRORISM» (0.83)."),
               HttpStatus.OK);
         });
   }
@@ -149,5 +151,19 @@ class InboundPipelineRouterTest {
     assertInstanceOf(List.class, sw);
     assertEquals(1, ((List<?>) sw).size());
     assertEquals("обнал", ((Map<?, ?>) ((List<?>) sw).get(0)).get("pattern"));
+  }
+
+  @Test
+  void semanticCommentPersistedToAnalysis() {
+    stubMl("NONE");
+    svc.processClaimed(msg.getId());
+    ArgumentCaptor<ru.security.gateway.domain.MessageThreatAnalysis> cap =
+        ArgumentCaptor.forClass(ru.security.gateway.domain.MessageThreatAnalysis.class);
+    verify(analysisRepo).save(cap.capture());
+    assertEquals(ru.security.gateway.domain.ThreatCategory.TERRORISM,
+        cap.getValue().getSemanticCategory());
+    assertEquals(0.83, cap.getValue().getSemanticScore().doubleValue(), 1e-9);
+    assertTrue(cap.getValue().getSemanticComment().contains("поймала парафраз"),
+        cap.getValue().getSemanticComment());
   }
 }

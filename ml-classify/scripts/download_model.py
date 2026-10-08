@@ -1,10 +1,9 @@
-"""Скачивание rubert-tiny2 + экспорт в ONNX (./models/rubert-tiny2/).
+"""Скачивание rubert-tiny2 + экспорт в ONNX.
 
-Запуск с хоста (нужен интернет):
+Основной путь — multi-stage Dockerfile (stage 1 вызывает этот скрипт,
+веса запекаются в образ, на хосте ничего не нужно).
+Вручную с хоста (нужен интернет и torch+optimum):
     /tmp/opencode/slmproto/bin/python ml-classify/scripts/download_model.py [--out ./models/rubert-tiny2]
-
-В Docker entrypoint сам докачает при первом старте, если /models пуст
-и есть сеть; без сети — продолжит с rule-based fallback.
 Требует torch+optimum только здесь (в рантайме их нет).
 """
 import argparse

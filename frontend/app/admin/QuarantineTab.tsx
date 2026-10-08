@@ -263,14 +263,14 @@ export default function QuarantineTab({
           token={token}
           onClose={() => setOpen(null)}
           onReprocessed={(fresh) => {
+            // Только «Перепроверить»: письмо осталось в том же ящике, фильтры не трогаем.
             setOpen(fresh);
-            // Письмо могло сменить ящик (forward → FORWARDED, release → ушло из SOC):
-            // переключаемся за ним; список дотягивается reloadToken.
-            if (fresh.status === 'REROUTED' || fresh.status === 'FORWARDED') {
-              setCategory('');
-              setPage(0);
-              setBox(fresh.status);
-            }
+            setReloadToken((t) => t + 1);
+            onStatsRefresh();
+          }}
+          onResolved={(status) => {
+            // release/forward: анализ закрыт, следим за письмом в его новом ящике.
+            if (status === 'REROUTED' || status === 'FORWARDED') setBox(status);
             setReloadToken((t) => t + 1);
             onStatsRefresh();
           }}

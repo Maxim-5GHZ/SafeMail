@@ -83,27 +83,39 @@ class SemanticModel:
         emb = (out * mask).sum(1) / np.clip(mask.sum(1), 1e-9, None)
         return emb / np.linalg.norm(emb, axis=1, keepdims=True).clip(min=1e-9)
 
-    def predict(self, text: str) -> tuple[str, float]:
-        """kNN-max: категория ближайшего эталона. Консервативно: угроза только
-        при score >= THRESHOLD и марже над NONE >= MARGIN, иначе NONE."""
+    def explain(self, text: str) -> tuple[str, float, float, str | None]:
+        """Детали инференса для комментария SLM:
+        (лучшая категория, её скор, скор NONE, текст ближайшего эталона).
+        Недоступна/пусто — ("NONE", 0.0, 0.0, None)."""
         if not self.available or not (text or "").strip():
-            return ("NONE", 0.0)
+            return ("NONE", 0.0, 0.0, None)
         try:
             with self._lock:
                 e = self._embed([text[:2000]])[0]
-                sims = {cat: float((e @ emb.T).max())
-                        for cat, emb in self._proto_embs.items()}
-            best = max(CATEGORIES, key=lambda c: sims.get(c, -1.0))
-            score = sims.get(best, 0.0)
-            if best == "NONE":
-                return ("NONE", round(sims.get("NONE", 0.0), 4))
-            margin = score - sims.get("NONE", 0.0)
-            if score >= SEMANTIC_THRESHOLD and margin >= SEMANTIC_MARGIN:
-                return (best, round(score, 4))
-            return ("NONE", round(score, 4))
-        except Exception as e:
-            print(f"[SEMANTIC] Ошибка инференса: {e} — fallback NONE", flush=True)
-            return ("NONE", 0.0)
+                best_cat, best_score, nearest = "NONE", -1.0, None
+                for cat in CATEGORIES:
+                    embs = self._proto_embs[cat]
+                    sims = e @ embs.T
+                    i = int(sims.argmax())
+                    if float(sims[i]) > best_score:
+                        best_score = float(sims[i])
+                        best_cat = cat
+                        nearest = PROTOTYPES[cat][i]
+                none_score = float((e @ self._proto_embs["NONE"].T).max())
+            return (best_cat, round(best_score, 4), round(none_score, 4), nearest)
+        except Exception as ex:
+            print(f"[SEMANTIC] Ошибка инференса: {ex} — fallback NONE", flush=True)
+            return ("NONE", 0.0, 0.0, None)
+
+    def predict(self, text: str) -> tuple[str, float]:
+        """kNN-max: категория ближайшего эталона. Консервативно: угроза только
+        при score >= THRESHOLD и марже над NONE >= MARGIN, иначе NONE."""
+        best, score, none, _ = self.explain(text)
+        if best == "NONE":
+            return ("NONE", score)
+        if score >= SEMANTIC_THRESHOLD and score - none >= SEMANTIC_MARGIN:
+            return (best, score)
+        return ("NONE", score)
 
 
 def _sess_options():

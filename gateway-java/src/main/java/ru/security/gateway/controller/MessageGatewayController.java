@@ -80,8 +80,11 @@ public class MessageGatewayController {
     var msg = messageRepo.findById(id).orElseThrow(() -> new java.util.NoSuchElementException("Message not found: " + id));
     if ((msg.getStatus() == MessageStatus.REROUTED || msg.getStatus() == MessageStatus.FORWARDED)
         && !MessageService.currentUserIsAdmin()) {
-      // Вложение из карантина получателю недоступно — тот же 404, без намёка на блокировку.
-      throw new java.util.NoSuchElementException("Message not found: " + id);
+      // Своё вложение отправитель качает; остальным карантин недоступен (тот же 404).
+      String me = MessageService.currentUserEmail();
+      if (me == null || !me.equalsIgnoreCase(msg.getSenderEmail())) {
+        throw new java.util.NoSuchElementException("Message not found: " + id);
+      }
     }
     var att = attachmentRepo.findById(attachmentId).orElseThrow();
     if (!att.getMessageId().equals(id)) throw new IllegalArgumentException("Attachment mismatch");

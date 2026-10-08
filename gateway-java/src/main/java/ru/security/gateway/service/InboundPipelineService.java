@@ -288,6 +288,10 @@ public class InboundPipelineService {
     ta.setLlmConfidence(BigDecimal.valueOf(conf));
     ta.setFinalVerdict(cat);
     ta.setExplanation(explanation);
+    ta.setSemanticCategory(parseCategory(str(verdict, "semantic_category")));
+    ta.setSemanticScore(BigDecimal.valueOf(num(verdict, "semantic_score")));
+    String semComment = str(verdict, "semantic_comment");
+    ta.setSemanticComment(semComment.isBlank() ? null : semComment);
     ta.setSpellerFixes(toJson(enriched.getOrDefault("speller_fixes", List.of())));
     analysisRepo.save(ta);
     msg.setStatus(MessageStatus.ANALYZED);

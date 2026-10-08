@@ -1,2 +1,7 @@
 fastapi==0.115.6
 uvicorn==0.34.0
+# SLM-инференс (CPU): эмбеддинги + kNN к эталонам (см. app/semantic.py).
+# torch здесь НЕТ — он нужен только для экспорта весов (stage 1 Dockerfile).
+numpy==1.26.4
+onnxruntime==1.22.0
+transformers==4.47.1

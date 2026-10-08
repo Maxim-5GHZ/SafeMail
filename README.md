@@ -86,9 +86,10 @@
    пайплайна) на адреса правила категории → `REROUTED`. При недоступности ML —
    fallback, SMTP-сессия не страдает (тяжёлое — в поллере).
 
-**SLM**: лимит 4 ГБ RAM; прототип — `rubert-tiny2` (ONNX, ~116 МБ, ~1 мс),
-порог `0.65`, маржа `0.05`, `fuse_verdict` обратно совместим. Без файла модели
-работает rule-based fallback (зафиксировано).
+**SLM**: лимит 4 ГБ RAM; `rubert-tiny2` (ONNX, 116 МБ, CPU, ~220 МБ RAM) —
+веса запечены в docker-образ (multi-stage: torch только на стадии экспорта),
+стартап-тесты `10/10` парафраз; `fuse_verdict` (эвристика главная, пороги
+`0.65/0.05`). Сборке нужен интернет (HuggingFace на stage 1).
 
 ## Принятые решения (суть)
 
@@ -143,7 +144,7 @@ gateway-java/   Spring Boot: smtp/, service/ (InboundPipelineService, MailRoutin
                 MessageService, AuthService), controller/, security/, domain/, repository/
 ml-parser/      FastAPI :8001 — parse-extract
 ml-enrich/      FastAPI :8002 — normalize-enrich
-ml-classify/    FastAPI :8003 — classify-threat (+ SLM-прототип)
+ml-classify/    FastAPI :8003 — classify-threat (эвристика + стоп-слова + SLM rubert-tiny2 в образе)
 frontend/       Next.js 14: app/(login,inbox,admin), lib/ (api, labels, auth), components/
 nginx/          TLS-терминация + gen-certs.sh
 docs/PROD.md    приём почты из интернета (MX/порт 25/окружение)

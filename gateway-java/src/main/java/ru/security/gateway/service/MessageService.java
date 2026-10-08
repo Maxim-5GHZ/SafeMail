@@ -73,7 +73,9 @@ public class MessageService {
       dto.setStatus(m.getStatus());
       dto.setCreatedAt(m.getCreatedAt());
       MessageThreatAnalysis a = analyses.get(m.getId());
-      if (a != null) {
+      if (a != null && currentUserIsAdmin()) {
+        // Вердикт — только админу: отправитель в «Отправленных» видит факт
+        // блокировки по статусу, но не категорию и разбор.
         dto.setVerdict(a.getFinalVerdict());
       }
       // cleanText — всегда (сниппеты списка), а не только при наличии анализа.
@@ -85,11 +87,47 @@ public class MessageService {
     });
   }
 
+  /** Урезанная деталка для отправителя карантинного письма: без вердикта,
+   *  разбора, нормализованного текста, сырого EML, скоринга ссылок и маршрута ИБ. */
+  private MessageDto senderStrippedDetails(Message m, UUID id) {
+    MessageDto dto = new MessageDto();
+    dto.setId(m.getId());
+    dto.setSenderEmail(m.getSenderEmail());
+    dto.setRecipientEmail(m.getRecipientEmail());
+    dto.setSubject(m.getSubject());
+    dto.setStatus(m.getStatus());
+    dto.setCreatedAt(m.getCreatedAt());
+    parsedRepo.findByMessageId(id).ifPresent(pd -> dto.setCleanText(pd.getCleanText()));
+    dto.setLinks(linkRepo.findByMessageId(id).stream().map(l -> {
+      MessageDto.LinkDto d = new MessageDto.LinkDto();
+      d.setUrl(l.getUrl());
+      return d;
+    }).toList());
+    dto.setAttachments(attachmentRepo.findByMessageId(id).stream().map(a -> {
+      MessageDto.AttachmentDto d = new MessageDto.AttachmentDto();
+      d.setId(a.getId());
+      d.setFilename(a.getFilename());
+      d.setSizeBytes(a.getFileSizeBytes());
+      d.setContentType(a.getContentType());
+      d.setThreat(false);
+      return d;
+    }).toList());
+    dto.setAttachmentCount(dto.getAttachments().size());
+    dto.setLastError(lastFailure(id));
+    return dto;
+  }
+
   @Transactional(readOnly = true)
   public MessageDto getMessageDetails(UUID id) {
     Message m = messages.findById(id).orElseThrow(() -> new NoSuchElementException("Message not found: " + id));
     if ((m.getStatus() == MessageStatus.REROUTED || m.getStatus() == MessageStatus.FORWARDED)
         && !currentUserIsAdmin()) {
+      String me = currentUserEmail();
+      if (me != null && me.equalsIgnoreCase(m.getSenderEmail())) {
+        // Отправитель открывает своё карантинное письмо: текст и файлы — да,
+        // вердикт/разбор/маршрут ИБ — нет (адреса безопасников не палим).
+        return senderStrippedDetails(m, id);
+      }
       // Карантин получателю не виден: тот же 404, что для несуществующего (не палим факт блокировки).
       throw new NoSuchElementException("Message not found: " + id);
     }
@@ -138,6 +176,9 @@ public class MessageService {
       t.setHeuristicScore(a.getHeuristicScore() == null ? null : a.getHeuristicScore().doubleValue());
       t.setHeuristicFlags(a.getHeuristicFlags() == null ? List.of() : List.of(a.getHeuristicFlags()));
       t.setSpellerFixes(parseJsonLenient(a.getSpellerFixes()));
+      t.setSemanticCategory(a.getSemanticCategory());
+      t.setSemanticScore(a.getSemanticScore() == null ? null : a.getSemanticScore().doubleValue());
+      t.setSemanticComment(a.getSemanticComment());
       dto.setThreat(t);
     });
     // Маршрут «кому предназначалось -> куда ушло» для инженерной шторки.
@@ -154,9 +195,16 @@ public class MessageService {
   }
 
   /** Роль из JWT (фильтр кладёт ROLE_*); без аутентификации — обычный пользователь. */
-  public static boolean currentUserIsAdmin() {
-    var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+  public static boolean currentUserIsAdmin() {    var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
     return auth != null && auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+  }
+
+  /** Email из JWT (JwtAuthFilter кладёт его principal'ом); null — без аутентификации. */
+  public static String currentUserEmail() {
+    var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null || auth.getName() == null) return null;
+    String name = auth.getName();
+    return (name.contains("@") ? name : null);
   }
 
   /** Последняя неуспешная запись delivery_logs (причина для FAILED-строк). */

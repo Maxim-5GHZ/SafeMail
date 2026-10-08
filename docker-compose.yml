@@ -42,11 +42,8 @@ services:
       - "8003:8003"
     environment:
       - PORT=8003
-      # Путь к GGUF-модели внутри контейнера. Если файла нет — работает rule-based fallback.
-      - MODEL_PATH=/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
-    # Раскомментировать, когда скачана модель:
-    # volumes:
-    #   - ./models:/models:ro
+      # SLM-веса (rubert-tiny2 ONNX) запечены в образ (stage 1 Dockerfile),
+      # volume не нужен. MODEL_DIR по умолчанию /models/rubert-tiny2.
     restart: unless-stopped
 
   gateway:

@@ -58,6 +58,12 @@ class QuarantineHiddenTest {
             List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
   }
 
+  private void asUser(String email) {
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken(email, null,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+  }
+
   private void stubEmptyPage() {
     when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
@@ -137,5 +143,76 @@ class QuarantineHiddenTest {
   void detailDeliveredVisibleToUser() {
     MessageDto dto = svc().getMessageDetails(quarantineMessage(MessageStatus.DELIVERED));
     assertEquals(MessageStatus.DELIVERED, dto.getStatus());
+  }
+
+  @Test
+  void detailQuarantineStrippedForSender() {
+    UUID id = UUID.randomUUID();
+    ru.security.gateway.domain.Message m = ru.security.gateway.domain.Message.builder()
+        .senderEmail("evil@evil.ru").recipientEmail("bob@corp-sec.ru")
+        .subject("t").status(MessageStatus.REROUTED).build();
+    m.setId(id);
+    when(messages.findById(id)).thenReturn(Optional.of(m));
+    when(parsedRepo.findByMessageId(id)).thenReturn(Optional.of(
+        ru.security.gateway.domain.MessageParsedData.builder()
+            .messageId(id).cleanText("hello").normalizedText("HELLO").build()));
+    when(linkRepo.findByMessageId(id)).thenReturn(List.of(
+        ru.security.gateway.domain.MessageLink.builder().messageId(id).url("http://x.ru")
+            .status(ru.security.gateway.domain.LinkStatus.MALICIOUS).reputationScore(80)
+            .details("{\"reasons\":[\"blacklist\"]}").build()));
+    when(attachmentRepo.findByMessageId(id)).thenReturn(List.of(
+        ru.security.gateway.domain.MessageAttachment.builder().messageId(id)
+            .filename("f.pdf").contentType("application/pdf").fileSizeBytes(10).threat(true).build()));
+    lenient().when(analysisRepo.findByMessageId(id)).thenReturn(Optional.of(
+        ru.security.gateway.domain.MessageThreatAnalysis.builder().messageId(id)
+            .finalVerdict(ru.security.gateway.domain.ThreatCategory.TERRORISM).build()));
+    lenient().when(deliveryRepo.findByMessageId(id)).thenReturn(List.of());
+    asUser("evil@evil.ru");
+    MessageDto dto = svc().getMessageDetails(id);
+    assertEquals(MessageStatus.REROUTED, dto.getStatus());
+    assertEquals("hello", dto.getCleanText());
+    // Вердикт и разбор отправителю не палим.
+    assertNull(dto.getVerdict());
+    assertNull(dto.getThreat());
+    assertNull(dto.getNormalizedText());
+    assertNull(dto.getRawText());
+    assertTrue(dto.getDeliveries() == null || dto.getDeliveries().isEmpty());
+    // Ссылки — только URL, без скоринга; вложения — без флага угрозы.
+    assertEquals(1, dto.getLinks().size());
+    assertEquals("http://x.ru", dto.getLinks().get(0).getUrl());
+    assertNull(dto.getLinks().get(0).getReputationScore());
+    assertEquals(1, dto.getAttachments().size());
+    assertFalse(dto.getAttachments().get(0).isThreat());
+  }
+
+  @Test
+  void detailQuarantineHiddenFromStranger() {
+    asUser("stranger@corp-sec.ru");
+    assertThrows(NoSuchElementException.class,
+        () -> svc().getMessageDetails(quarantineMessage(MessageStatus.REROUTED)));
+  }
+
+  @Test
+  void listVerdictOnlyForAdmin() {
+    ru.security.gateway.domain.Message m = ru.security.gateway.domain.Message.builder()
+        .senderEmail("a@x.ru").recipientEmail("b@x.ru").status(MessageStatus.REROUTED).build();
+    m.setId(UUID.randomUUID());
+    when(messages.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of(m)));
+    lenient().when(analysisRepo.findByMessageId(m.getId())).thenReturn(Optional.of(
+        ru.security.gateway.domain.MessageThreatAnalysis.builder().messageId(m.getId())
+            .finalVerdict(ru.security.gateway.domain.ThreatCategory.MAN_MADE).build()));
+    lenient().when(parsedRepo.findByMessageId(any())).thenReturn(Optional.empty());
+    lenient().when(attachmentRepo.countByMessageId(any())).thenReturn(0L);
+    // Обычный пользователь вердикта не видит…
+    var page = svc().getFilteredMessages(null, null, null, null, null, "sent",
+        org.springframework.data.domain.PageRequest.of(0, 20));
+    assertNull(page.getContent().get(0).getVerdict());
+    // …админ видит.
+    asAdmin();
+    var page2 = svc().getFilteredMessages(null, null, null, null, null, "sent",
+        org.springframework.data.domain.PageRequest.of(0, 20));
+    assertEquals(ru.security.gateway.domain.ThreatCategory.MAN_MADE,
+        page2.getContent().get(0).getVerdict());
   }
 }

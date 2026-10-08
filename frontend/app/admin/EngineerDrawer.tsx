@@ -23,6 +23,8 @@ interface Props {
   token: string;
   onClose: () => void;
   onReprocessed: (fresh: MessageDto) => void;
+  /** release/forward: шторка закрывается, родитель следит за письмом без сброса фильтров. */
+  onResolved: (status: string) => void;
 }
 
 function asSpellerFixes(v: unknown): SpellerFix[] {
@@ -128,7 +130,7 @@ function ScoreBar({ pct, label }: { pct: number | null; label: string }) {
   );
 }
 
-export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: Props) {
+export default function EngineerDrawer({ msg, token, onClose, onReprocessed, onResolved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmRelease, setConfirmRelease] = useState(false);
@@ -161,6 +163,11 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
   const confidencePct = Math.round((msg.threat?.confidence ?? 0) * 100);
   const heuristicPct =
     msg.threat?.heuristicScore != null ? Math.round(msg.threat.heuristicScore * 100) : null;
+  // Бар модели — сырой скор SLM и только при её категории (иначе confidence вердикта врёт).
+  const modelPct =
+    msg.threat?.semanticCategory != null && msg.threat.semanticCategory !== 'NONE' && msg.threat.semanticScore != null
+      ? Math.round(msg.threat.semanticScore * 100)
+      : null;
   const actionable = msg.status === 'REROUTED' || msg.status === 'FORWARDED';
 
   const reprocess = async () => {
@@ -181,9 +188,11 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
     setError(null);
     try {
       await releaseMessage(token, msg.id, reason.trim() || undefined);
-      onReprocessed(await getMessage(token, msg.id));
+      const fresh = await getMessage(token, msg.id);
       setConfirmRelease(false);
       setReason('');
+      onResolved(fresh.status);
+      onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     } finally {
@@ -204,10 +213,12 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
         ...(extra ? { emails: [extra] } : {}),
         ...(forwardReason.trim() ? { reason: forwardReason.trim() } : {}),
       });
-      onReprocessed(await getMessage(token, msg.id));
+      const fresh = await getMessage(token, msg.id);
       setConfirmForward(false);
       setExtraEmail('');
       setForwardReason('');
+      onResolved(fresh.status);
+      onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     } finally {
@@ -351,12 +362,32 @@ export default function EngineerDrawer({ msg, token, onClose, onReprocessed }: P
                 <p className="text-xs leading-relaxed text-slate-600 mb-3">
                   {msg.threat?.explanation || 'Аномалий или угроз в содержимом не выявлено.'}
                 </p>
+
+                {/* Комментарий SLM: итог нейросетевой модели одной строкой */}
+                {msg.threat && (
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 mb-3">
+                    <div className="text-[10px] font-mono uppercase font-bold text-slate-400 mb-1">
+                      Комментарий SLM
+                      {msg.threat.semanticCategory && msg.threat.semanticCategory !== 'NONE' && (
+                        <> · {categoryLabel(msg.threat.semanticCategory)}
+                          {msg.threat.semanticScore != null && (
+                            <> — {(msg.threat.semanticScore * 100).toFixed(0)}%</>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-700">
+                      {msg.threat.semanticComment
+                        || 'Комментарий отсутствует — письмо обработано до обновления.'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Метрики скоринга: Сигнатурный анализ vs Нейросетевая модель */}
               <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100">
                 <ScoreBar pct={heuristicPct} label="Сигнатурный анализ" />
-                <ScoreBar pct={confidencePct} label="Нейросетевая модель" />
+                <ScoreBar pct={modelPct} label="Нейросетевая модель" />
               </div>
             </div>
           </div>

@@ -45,6 +45,19 @@ public class MessageThreatAnalysis {
   @Column(columnDefinition = "TEXT")
   private String explanation;
 
+  /** Сырой вердикт SLM (может отличаться от final_verdict — эвристика главная). */
+  @Enumerated(EnumType.STRING)
+  @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+  @Column(name = "semantic_category", columnDefinition = "threat_category")
+  private ThreatCategory semanticCategory;
+
+  @Column(name = "semantic_score", precision = 5, scale = 4)
+  private BigDecimal semanticScore;
+
+  /** Человекочитаемый итог SLM (одна строка) — для шторки /admin. */
+  @Column(name = "semantic_comment", columnDefinition = "TEXT")
+  private String semanticComment;
+
   @Column(name = "speller_fixes", columnDefinition = "jsonb")
   @JdbcTypeCode(SqlTypes.JSON)
   private String spellerFixes;

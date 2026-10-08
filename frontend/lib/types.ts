@@ -57,6 +57,10 @@ export interface ThreatReportDto {
   heuristicFlags: string[];
   /** Распарсенный JSON speller_fixes либо сырая строка. */
   spellerFixes: unknown;
+  /** Сырой вердикт SLM + её комментарий (только шторка /admin). */
+  semanticCategory: ThreatCategory | null;
+  semanticScore: number | null;
+  semanticComment: string | null;
 }
 
 export interface MessageDto {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, downloadAttachment, getMessage, reprocessMessage } from '@/lib/api';
 import { formatDate, formatSize } from '@/lib/format';
 import type { MessageDto } from '@/lib/types';
@@ -33,6 +33,8 @@ function StatusBadge({ status, folder }: { status: string; folder: 'inbox' | 'se
 export default function ReaderView({ id, token, folder, onBack, onChanged }: Props) {
   const [msg, setMsg] = useState<MessageDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const failedRef = useRef(false);
   const [reprocessing, setReprocessing] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
 
@@ -46,13 +48,23 @@ export default function ReaderView({ id, token, folder, onBack, onChanged }: Pro
           setError(null);
         }
       } catch (e) {
-        // Карантин получателю не виден: бэк отдаёт 404 — показываем заглушку без намёка на блокировку.
-        if (alive) setError(e instanceof ApiError && e.status === 404 ? 'Письмо недоступно' : e instanceof ApiError ? e.message : 'Ошибка сети');
+        // Карантин получателю не виден: бэк отдаёт 404 — терминальное состояние,
+        // polling останавливаем (иначе вечная «Загрузка…» как на скрине).
+        if (alive) {
+          if (e instanceof ApiError && e.status === 404) {
+            setError('Письмо недоступно');
+            failedRef.current = true;
+            setFailed(true);
+          } else {
+            setError(e instanceof ApiError ? e.message : 'Ошибка сети');
+          }
+        }
       }
     };
     load();
     // Пока анализ идёт — подпитываем деталку; терминальный статус дальше не трогаем.
     const t = setInterval(async () => {
+      if (failedRef.current) return;
       try {
         const d = await getMessage(token, id);
         if (alive) setMsg(d);
@@ -111,7 +123,7 @@ export default function ReaderView({ id, token, folder, onBack, onChanged }: Pro
       </div>
       {error && <div className="mx-4 mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
       {!msg ? (
-        <div className="p-8 text-gray-400">Загрузка…</div>
+        failed ? null : <div className="p-8 text-gray-400">Загрузка…</div>
       ) : (
         <div className="p-6 max-w-3xl flex flex-col gap-4 overflow-y-auto">
           <h2 className="text-xl font-semibold">{msg.subject || '(без темы)'}</h2>
