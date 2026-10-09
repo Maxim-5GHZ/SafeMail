@@ -408,7 +408,7 @@ function RoiSimulator() {
               <div className="mt-8 flex justify-center gap-4">
                 <Link
                   href="/admin"
-                  className="inline-block px-8 py-3.5 rounded-full bg-[#101C4C] text-[#ECF3FB] font-bold text-base tracking-wide bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300"
+                  className="inline-block px-8 py-3.5 rounded-full bg-[#101C4C] text-white font-bold text-base tracking-wide hover:bg-[#1c2c6e] border border-[#101C4C] shadow-md transition-all duration-300"
                 >
                   Защитить свой бизнес
                 </Link>
@@ -446,13 +446,13 @@ export default function PresentationPage() {
           <div className="flex flex-wrap gap-4 justify-center">
             <Link
               href="/admin"
-              className="px-8 py-3.5 rounded-full bg-[#101C4C] text-[#ECF3FB] font-bold text-base tracking-wide bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300"
+              className="px-8 py-3.5 rounded-full bg-[#101C4C] text-white font-bold text-base tracking-wide hover:bg-[#1c2c6e] border border-[#101C4C] shadow-md transition-all duration-300"
             >
               Смотреть Консоль ИБ (SOC)
             </Link>
             <Link
               href="/inbox"
-              className="px-8 py-3.5 rounded-full border border-white/20 text-[#101C4C] bg-[#ECF3FB] hover:border-[#4F6590]/80 border border-[#101C4C] font-bold text-base tracking-wide transition-all duration-300"
+              className="px-8 py-3.5 rounded-full border border-[#101C4C] text-[#101C4C] bg-white/60 hover:bg-white font-bold text-base tracking-wide shadow-sm transition-all duration-300"
             >
               Ящик сотрудника
             </Link>
@@ -662,7 +662,7 @@ export default function PresentationPage() {
         <div className="flex items-center gap-3">
           <Link
             href={homeUrl}
-            className="px-4 py-1.5 rounded-full text-sm font-semibold backdrop-blur-md bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300 flex items-center gap-2 text-[#ECF3FB] bg-[#101C4C]"
+            className="px-4 py-1.5 rounded-full text-sm font-semibold bg-[#101C4C] hover:bg-[#1c2c6e] border border-[#101C4C] shadow-md transition-all duration-300 flex items-center gap-2 text-white"
           >
             <span>{token ? 'В интерфейс' : 'Войти'}</span>
 
