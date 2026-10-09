@@ -708,7 +708,7 @@ export default function PresentationPage() {
           <button
             onClick={prevSlide}
             disabled={currentSlide === 0}
-            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
+            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/60 border border-[#101C4C]/15 shadow-sm flex items-center justify-center hover:bg-white/90 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
             title="Предыдущий слайд"
           >
             ↑
@@ -716,7 +716,7 @@ export default function PresentationPage() {
           <button
             onClick={nextSlide}
             disabled={currentSlide === totalSlides - 1}
-            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
+            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/60 border border-[#101C4C]/15 shadow-sm flex items-center justify-center hover:bg-white/90 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
             title="Следующий слайд"
           >
             ↓
