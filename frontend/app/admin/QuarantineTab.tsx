@@ -40,11 +40,20 @@ export default function QuarantineTab({
   stats,
   onStatsRefresh,
   onAuthFail,
+  feedSignal,
+  openSignal,
+  live,
 }: {
   token: string;
   stats: AdminStats | null;
   onStatsRefresh: () => void;
   onAuthFail: (e: unknown) => boolean;
+  /** +1 на каждую новую угрозу из SSE — мгновенно перезагрузить список. */
+  feedSignal: number;
+  /** Открыть разбор письма из тоста (id + метка для повторов). */
+  openSignal: { id: string; tick: number } | null;
+  /** SSE жива — поллинг замедляется до страховки. */
+  live: boolean;
 }) {
   const [box, setBox] = useState<Box>('REROUTED');
   const [category, setCategory] = useState<'' | ThreatCategory>('');
@@ -98,8 +107,11 @@ export default function QuarantineTab({
   loadRef.current = load;
 
   useEffect(() => {
+    // Тот же гард, что у статистики: если таб смонтировался до токена,
+    // первая попытка пропускается, повтор — когда токен приехал.
+    if (!token) return;
     loadRef.current();
-  }, [box, category, page, reloadToken]);
+  }, [box, category, page, reloadToken, token]);
 
   useEffect(() => {
     setPage(0);
@@ -107,15 +119,25 @@ export default function QuarantineTab({
   }, [box, category]);
 
   useEffect(() => {
+    // При живой SSE список и так обновляется по событию — интервал страховка.
+    // ВАЖНО: cleanup только снимает таймер и НЕ абортит in-flight загрузку.
+    // Иначе флип live (коннект/реконнект SSE пересоздаёт интервал) убивает
+    // текущий fetch: AbortError глотается, data остаётся null — вечный
+    // скелетон до ручного «Обновить». Аборт — только на размонтирование ниже.
     const t = setInterval(() => {
       if (document.hidden || tickBusy.current) return;
       tickBusy.current = true;
       loadRef.current().finally(() => {
         tickBusy.current = false;
       });
-    }, 10000);
+    }, live ? 30000 : 10000);
+    return () => clearInterval(t);
+  }, [live]);
+
+  // Размонтирование — единственное место, где можно абортить текущий fetch:
+  // на StrictMode-перемаунте эффекты перестартовывают и загрузка перезапускается.
+  useEffect(() => {
     return () => {
-      clearInterval(t);
       abortRef.current?.abort();
     };
   }, []);
@@ -128,6 +150,26 @@ export default function QuarantineTab({
       setError(e instanceof ApiError ? e.message : 'Ошибка сети');
     }
   };
+
+  // Живая лента: новая угроза — перезагрузить список сразу, не ждать поллинга.
+  const lastFeed = useRef(feedSignal);
+  useEffect(() => {
+    if (feedSignal !== lastFeed.current) {
+      lastFeed.current = feedSignal;
+      setReloadToken((t) => t + 1);
+    }
+  }, [feedSignal]);
+
+  // Живая лента: кнопка «Открыть разбор» в тосте.
+  const lastOpenKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openSignal) return;
+    const key = `${openSignal.id}#${openSignal.tick}`;
+    if (key === lastOpenKey.current) return;
+    lastOpenKey.current = key;
+    openDetails(openSignal.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal]);
 
   const counts = box === 'REROUTED' ? (stats?.byCategoryRerouted ?? {}) : (stats?.byCategoryForwarded ?? {});
   const boxCount = (s: Box) => stats?.byStatus[s] ?? 0;

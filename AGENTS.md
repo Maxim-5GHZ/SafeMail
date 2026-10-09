@@ -103,7 +103,10 @@ src/main/java/ru/security/gateway/
     MailRoutingService.java      # sendEmail с hairpin
     MessageService.java          # фильтры/пагинация/деталка/reprocess/правила
     AuthService.java             # register username→email@primaryDomain (настройки), BCrypt+JWT
-  controller/                    # Auth, MessageGateway, RoutingRule, GlobalExceptionHandler
+  controller/                    # Auth, MessageGateway, RoutingRule, GlobalExceptionHandler,
+                                 # AdminEventsController (SSE-лента угроз, см. ниже)
+  events/                        # ThreatQuarantinedEvent/record + ThreatSseService (SSE-registry,
+                                 # broadcast AFTER_COMMIT, heartbeat 20с; юнит ThreatSseServiceTest без БД)
   security/                      # JwtService, JwtAuthFilter, SecurityConfig
 ```
 
@@ -130,6 +133,15 @@ src/main/java/ru/security/gateway/
   не ронять SMTP-сессию: приём всегда быстрый, тяжёлое — в поллере.
   Тема письма обязательно входит в enrich/classify-вход
   (`subject + cleanText + attachments`), иначе угроза только в теме не ловится.
+- Живая лента угроз: `GET /api/v1/admin/events` (только `ADMIN`,
+  `text/event-stream`, `X-Accel-Buffering: no`). Публикация — из `processOne`
+  в точке `REROUTED` (`publishThreatEvent`; `eventPublisher` — `@Autowired(required=false)`
+  null-паттерн как у `pipelineExecutor`, тесты через `new` не ломаются),
+  рассылка — `@TransactionalEventListener(AFTER_COMMIT, fallbackExecution=true)`
+  (откаченное в ленту не попадает). Пейлоад лёгкий, без тел писем:
+  `{messageId,senderEmail,recipientEmail,subject,category,confidence,createdAt}`.
+  Токен — `Bearer`-заголовок либо `?access_token=` (только этот путь, `EventSource`
+  без заголовков; цена — токен в query, прод гасится `access_log off` в nginx).
 - Чистая доставка — оригинальными байтами (`new MimeMessage(session, stream)`),
   карантинная — официальное «ЗАКЛЮЧЕНИЕ ШЛЮЗА СЕЙФМЕЙЛ № <id>»
   (`buildQuarantineBody`, 5 этапов строго в порядке пайплайна: приём →
@@ -331,6 +343,16 @@ Next.js 14 App Router, Tailwind (+DaisyUI только в `/admin`).
   (`severityOf/severityDotClass` в `labels.ts`: красный/оранжевый/янтарный/серый),
   фиолетовый акцент сохранён; сводка письма — панель с полосой severity,
   этапы отчёта — нумерованные маркеры, артефакты — моно (`soc-*` в `globals.css`).
+- Живая лента в `/admin`: хук `useThreatFeed` (`lib/threatFeed.ts`, `EventSource`
+  + `?access_token=`), стек тостов `ThreatToasts` (стекло, полоса severity,
+  кнопка «Открыть разбор» → `openSignal` в `QuarantineTab`, авто-скрытие 8с,
+  `toast-in/toast-out/severity-ping` в `globals.css` + `prefers-reduced-motion`),
+  колокольчик с непрочитанными + `LIVE`/`опрос`-пилюля в шапке. По событию —
+  мгновенное обновление статистики и списка (`feedSignal`); поллинг при живой
+  SSE замедляется до 30с (страховка), без SSE — 10с как раньше.
+  Ловушка: cleanup интервала НЕ должен абортить in-flight `load()` — флип `live`
+  пересоздаёт интервал и убивал бы текущий fetch в вечный скелетон (AbortError
+  глотается); аборт — только на размонтирование отдельным эффектом.
    Инженерная шторка следит за письмом между ящиками (forward переключает вкладку),
    бейдж статуса: `В карантине`/`Отправлено в ИБ`; выпуск активен в обоих ящиках
    (из `FORWARDED` тоже разрешён, в UI кнопка требует причину — бэк принимает и без неё),
@@ -375,6 +397,10 @@ BACKEND_URL, NEXT_PUBLIC_MAIL_DOMAIN`.
 самоподпись OpenSSL via `nginx/gen-certs.sh` (`CN=localhost`,
 `SAN: localhost, *.corp-sec.ru, 127.0.0.1`), ключ только на хосте
 (`nginx/certs/` в `.gitignore`, в репо не коммитить).
+Исключение — `location = /backend/v1/admin/events` (SSE-лента): идёт в обход
+Next-прокси сразу на gateway (`$upstream_gateway` + `rewrite ^/backend/(.*)$ /api/$1 break` —
+`proxy_pass` с переменной+URI отбрасывает query, а там `?access_token=`),
+`proxy_buffering off`, `proxy_read_timeout 1h`, `access_log off`.
 `frontend` бежит под `user: "${UID:-1000}:${GID:-1000}"` — иначе root-писанина
 dev-сервера в `./frontend/.next` ломает хостовые `npm run build/typecheck` (EACCES).
 `mailhog` (:1025 SMTP, :8025 веб) — MVP-relay для исходящих наружу

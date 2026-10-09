@@ -1,13 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <defs>
-    <linearGradient id="sm-shield" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2f6ff0"/>
-      <stop offset="1" stop-color="#0a44bd"/>
-    </linearGradient>
-  </defs>
-  <path d="M60 8 L100 22 V60 C100 88 80 102 60 112 C40 102 20 88 20 60 V22 Z" fill="url(#sm-shield)"/>
-  <path d="M60 8 L100 22 V60 C100 88 80 102 60 112 Z" fill="#ffffff" opacity="0.10"/>
-  <path d="M46 47 V36 a14 14 0 0 1 28 0 V47" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
-  <rect x="40" y="46" width="40" height="30" rx="3" fill="#ffffff"/>
-  <path d="M40 49 L60 64 L80 49 M40 76 L55 61 M80 76 L65 61" fill="none" stroke="#0b46b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 40 170 115">
+  <path d="M107.6 124.515L110.908 132H71.9084L85.9917 103.813C83.2834 96.7669 71.9084 74 92.4917 74C94.1869 74 95.6537 74.2029 96.9163 74.5767" stroke="#0e4fd0" stroke-width="7" fill="none"/>
+  <path d="M148.408 87C181.408 107 184.908 125.5 185.408 131C185.908 136.5 181.908 137 177.408 134.5C173.285 132.209 163.908 116.5 156.908 114C149.908 111.5 145.908 113.5 143.408 108.5" stroke="#0e4fd0" stroke-width="7" fill="none"/>
+  <path d="M166.908 74C190.908 88 192.908 95.3333 193.908 101.5C193.742 103.667 189.508 105.5 187.908 103.5C183.108 97.5 174.5 90 165 89.5" stroke="#0e4fd0" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <path d="M141.908 119V141.5C141.908 145.918 138.327 149.5 133.908 149.5H40.9084V49H99.0003" stroke="#0e4fd0" stroke-width="7" stroke-linecap="round" fill="none"/>
 </svg>

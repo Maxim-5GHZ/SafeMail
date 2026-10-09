@@ -25,6 +25,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
       return;
     }
     String header = request.getHeader("Authorization");
+    // SSE (EventSource) не умеет ставить заголовки: для живой ленты угроз
+    // (/api/v1/admin/events — и только для неё) токен принимается из ?access_token=.
+    // Цена — токен в query светится в access-логах; прод: access_log off на этом location.
+    if (header == null && "/api/v1/admin/events".equals(path)) {
+      String qp = request.getParameter("access_token");
+      if (qp != null && !qp.isBlank()) header = "Bearer " + qp;
+    }
     if (header != null && header.startsWith("Bearer ")) {
       try {
         String token = header.substring(7);

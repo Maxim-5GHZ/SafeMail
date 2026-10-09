@@ -49,6 +49,11 @@ public class InboundPipelineService {
   @Qualifier("pipelineExecutor")
   private org.springframework.core.task.TaskExecutor pipelineExecutor;
 
+  /** C: шина SSE-событий для SOC-панели (тот же null-паттерн, что у пула:
+   *  в юнит-тестах бина нет — событие просто не публикуется). */
+  @Autowired(required = false)
+  private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
   @Value("${ml.parser-url:http://localhost:8001}")
   private String parserUrl;
   @Value("${ml.enrich-url:http://localhost:8002}")
@@ -327,9 +332,21 @@ public class InboundPipelineService {
     } else {
       reroute(msg, cat);
       msg.setStatus(MessageStatus.REROUTED);
+      publishThreatEvent(msg, cat, conf);
     }
     msg.setProcessedAt(OffsetDateTime.now());
     messages.save(msg);
+  }
+
+  /**
+   * Живая лента SOC-панели: событие рассылается SSE-подписчикам только
+   * после коммита (AFTER_COMMIT в ThreatSseService) — откаченное в ленту не попадёт.
+   */
+  private void publishThreatEvent(Message msg, ThreatCategory cat, double conf) {
+    if (eventPublisher == null) return;
+    eventPublisher.publishEvent(new ru.security.gateway.events.ThreatQuarantinedEvent(
+        msg.getId(), msg.getSenderEmail(), msg.getRecipientEmail(), msg.getSubject(),
+        cat, conf, OffsetDateTime.now()));
   }
 
   /**

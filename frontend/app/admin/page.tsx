@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LayoutDashboard, ShieldAlert, Settings as SettingsIcon, Inbox, LogOut } from 'lucide-react';
+import { LayoutDashboard, ShieldAlert, Settings as SettingsIcon, Inbox, LogOut, Bell } from 'lucide-react';
 import FullPageLoader from '@/components/FullPageLoader';
+import ThreatToasts, { type ToastItem } from '@/components/ThreatToasts';
+import { useThreatFeed, type ThreatPing } from '@/lib/threatFeed';
 import { LogoMark } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import { ApiError, getAdminStats } from '@/lib/api';
@@ -23,6 +25,15 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [days, setDays] = useState(14);
+
+  // Живая лента угроз (SSE): тосты, счётчик непрочитанных, сигналы для
+  // мгновенного обновления карантина и открытия разбора из тоста.
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [feedSignal, setFeedSignal] = useState(0);
+  const [openSignal, setOpenSignal] = useState<{ id: string; tick: number } | null>(null);
+  const toastKey = useRef(0);
+  const dismissTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   const tickBusy = useRef(false);
 
@@ -62,20 +73,57 @@ export default function AdminPage() {
   const statsRef = useRef(loadStats);
   statsRef.current = loadStats;
 
-  useEffect(() => {
-    statsRef.current();
-  }, [days]);
+  const dismissToast = useCallback((key: number) => {
+    const timer = dismissTimers.current.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      dismissTimers.current.delete(key);
+    }
+    setToasts((prev) => prev.map((t) => (t.key === key ? { ...t, leaving: true } : t)));
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.key !== key)), 320);
+  }, []);
+
+  const pushToast = useCallback(
+    (t: ThreatPing) => {
+      const key = ++toastKey.current;
+      setToasts((prev) => [...prev.slice(-3), { ...t, key }]);
+      setUnread((u) => u + 1);
+      setFeedSignal((s) => s + 1);
+      statsRef.current();
+      dismissTimers.current.set(key, setTimeout(() => dismissToast(key), 8000));
+    },
+    [dismissToast],
+  );
+
+  // SSE-лента подключается только при живом токене; без токена — тихо выкл.
+  const live = useThreatFeed(token, pushToast);
 
   useEffect(() => {
+    const left = Array.from(dismissTimers.current.values());
+    return () => left.forEach(clearTimeout);
+  }, []);
+
+  useEffect(() => {
+    // Токен поднимается из localStorage асинхронно: маунт может случиться
+    // до него — тогда первая попытка тихо выходит, а повтор идёт здесь,
+    // когда токен приехал. Без token в зависимостях статистика висела
+    // пустой до первого срабатывания интервала-страховки.
+    if (!token) return;
+    statsRef.current();
+  }, [days, token]);
+
+  useEffect(() => {
+    // При живой SSE статистика и так обновляется по каждому событию —
+    // интервал остаётся редкой страховкой; без SSE — основной механизм.
     const t = setInterval(() => {
       if (document.hidden || tickBusy.current) return;
       tickBusy.current = true;
       statsRef.current().finally(() => {
         tickBusy.current = false;
       });
-    }, 10000);
+    }, live ? 30000 : 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [live]);
 
   if (!ready || !token) {
     return <FullPageLoader label="Проверка доступа…" />;
@@ -157,6 +205,40 @@ export default function AdminPage() {
               СейфМейл · Пульт ИБ
             </span>
             <span className="flex items-center gap-2 ml-auto">
+              <span
+                title={live ? 'Живая лента угроз подключена' : 'Живая лента недоступна — работает опрос'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold
+                            border backdrop-blur-sm ${
+                              live
+                                ? 'bg-emerald-50/70 border-emerald-200/60 text-emerald-700'
+                                : 'bg-white/60 border-white/70 text-slate-500'
+                            }`}
+              >
+                <span
+                  aria-hidden
+                  className={`inline-block w-1.5 h-1.5 rounded-full ${live ? 'bg-emerald-500 severity-ping' : 'bg-slate-400'}`}
+                />
+                {live ? 'LIVE' : 'опрос'}
+              </span>
+              <button
+                onClick={() => {
+                  setUnread(0);
+                  setTab('quarantine');
+                }}
+                title="Непрочитанные угрозы"
+                aria-label="Непрочитанные угрозы"
+                className="relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                           bg-white/60 backdrop-blur-sm border border-white/70 text-slate-700
+                           hover:bg-white/90 transition
+                           shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                {unread > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full text-[10px] font-bold leading-none bg-rose-500 text-white">
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </button>
               <a
                 href="/inbox"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
@@ -250,6 +332,9 @@ export default function AdminPage() {
               stats={stats}
               onStatsRefresh={() => statsRef.current()}
               onAuthFail={onAuthFail}
+              feedSignal={feedSignal}
+              openSignal={openSignal}
+              live={live}
             />
           )}
 
@@ -263,6 +348,15 @@ export default function AdminPage() {
             </div>
           )}
         </div>
+
+        <ThreatToasts
+          items={toasts}
+          onOpen={(id) => {
+            setTab('quarantine');
+            setOpenSignal({ id, tick: Date.now() });
+          }}
+          onDismiss={dismissToast}
+        />
       </div>
     </div>
   );
