@@ -87,9 +87,9 @@ function Bubble({ x, y, text, type }: { x: number; y: number; text: string; type
 
 // --- ОСНОВНАЯ SVG СХЕМА ---
 function DesktopScheme({ activeStep }: { activeStep: ScenarioStep | null }) {
-  const tag = { fontSize: 13, fill: '#64748b', fontFamily: 'monospace', fontWeight: 'bold' } as const;
-  const name = { fontSize: 21, fill: '#ffffff', fontWeight: 'bold' } as const;
-  const sub = { fontSize: 15, fill: '#94a3b8' } as const;
+  const tag = { fontSize: 13, fill: '#4F6590', fontFamily: 'monospace', fontWeight: 'bold' } as const;
+  const name = { fontSize: 21, fill: '#101C4C', fontWeight: 'bold' } as const;
+  const sub = { fontSize: 15, fill: '#4F6590' } as const;
   
   const activeNode = activeStep?.node;
 
@@ -99,8 +99,8 @@ function DesktopScheme({ activeStep }: { activeStep: ScenarioStep | null }) {
       fill: isActive ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)',
       stroke: isActive ? activeGlow : defaultStroke,
       strokeWidth: isActive ? 3 : 1.5,
-      filter: isActive ? `drop-shadow(0 0 16px ${activeGlow})` : 'none',
-      transition: 'all 0.3s ease',
+      filter: isActive ? `drop-shadow(0 0 8px ${activeGlow})` : 'none',
+      transition: 'all 1s ease',
     };
   };
 
@@ -114,7 +114,7 @@ function DesktopScheme({ activeStep }: { activeStep: ScenarioStep | null }) {
       </defs>
 
       {/* Трубы потока */}
-      <g stroke="rgba(255,255,255,0.14)" strokeWidth="2" fill="none" markerEnd="url(#arr)">
+      <g stroke="rgba(16,28,76,1)" strokeWidth="2" fill="none" markerEnd="url(#arr)">
         <path d="M 182 240 H 230" />
         <path d="M 414 240 H 460" />
         <path d="M 644 228 C 672 190, 672 130, 700 100" />
@@ -129,48 +129,48 @@ function DesktopScheme({ activeStep }: { activeStep: ScenarioStep | null }) {
 
       {/* Узлы (Блоки) */}
       <g textAnchor="middle">
-        <rect x="20" y="190" width="162" height="100" rx="14" {...getNodeStyle('IN', 'rgba(255,255,255,0.15)')} />
+        <rect x="20" y="190" width="162" height="100" rx="14" {...getNodeStyle('IN', 'rgba(16,28,76,1)')} />
         <text x="101" y="218" style={tag}>ВХОД</text>
         <text x="101" y="244" style={name}>Письмо</text>
         <text x="101" y="266" style={sub}>внешний поток</text>
 
-        <rect x="232" y="190" width="182" height="100" rx="14" {...getNodeStyle('GATEWAY', 'rgba(168,85,247,0.45)', '#c084fc')} />
-        <text x="323" y="218" style={{ ...tag, fill: '#c084fc' }}>ПРИЁМ</text>
+        <rect x="232" y="190" width="182" height="100" rx="14" {...getNodeStyle('GATEWAY', 'rgba(16,28,76,1)', '#c084fc')} />
+        <text x="323" y="218" style={{ ...tag, fill: '#101C4C' }}>ПРИЁМ</text>
         <text x="323" y="244" style={name}>Mail Gateway</text>
         <text x="323" y="266" style={sub}>забирает за 1мс</text>
 
-        <rect x="462" y="190" width="182" height="100" rx="14" {...getNodeStyle('QUEUE', 'rgba(34,211,238,0.45)', '#22d3ee')} />
-        <text x="553" y="218" style={{ ...tag, fill: '#22d3ee' }}>ОЧЕРЕДЬ</text>
+        <rect x="462" y="190" width="182" height="100" rx="14" {...getNodeStyle('QUEUE', 'rgba(16,28,76,1)', '#22d3ee')} />
+        <text x="553" y="218" style={{ ...tag, fill: '#101C4C' }}>ОЧЕРЕДЬ</text>
         <text x="553" y="244" style={name}>Postgres Queue</text>
         <text x="553" y="266" style={sub}>ждёт в базе</text>
 
         {/* 3 ML потока */}
-        <rect x="700" y="50" width="202" height="100" rx="14" {...getNodeStyle('PARSER', 'rgba(96,165,250,0.45)')} />
-        <text x="801" y="78" style={{ ...tag, fill: '#60a5fa' }}>ПОТОК 1</text>
+        <rect x="700" y="50" width="202" height="100" rx="14" {...getNodeStyle('PARSER', 'rgba(16,28,76,1)')} />
+        <text x="801" y="78" style={{ ...tag, fill: '#101C4C' }}>ПОТОК 1</text>
         <text x="801" y="103" style={{ ...name, fontSize: 19 }}>ml-parser</text>
         <text x="801" y="125" style={sub}>извлечение текста</text>
 
-        <rect x="700" y="190" width="202" height="100" rx="14" {...getNodeStyle('ENRICH', 'rgba(251,191,36,0.45)', '#fbbf24')} />
-        <text x="801" y="218" style={{ ...tag, fill: '#fbbf24' }}>ПОТОК 2</text>
+        <rect x="700" y="190" width="202" height="100" rx="14" {...getNodeStyle('ENRICH', 'rgba(16,28,76,1)', '#fbbf24')} />
+        <text x="801" y="218" style={{ ...tag, fill: '#101C4C' }}>ПОТОК 2</text>
         <text x="801" y="244" style={name}>ml-enrich</text>
         <text x="801" y="266" style={sub}>деобфускация</text>
 
-        <rect x="700" y="330" width="202" height="100" rx="14" {...getNodeStyle('CLASSIFY', 'rgba(52,211,153,0.45)', '#34d399')} />
-        <text x="801" y="358" style={{ ...tag, fill: '#34d399' }}>ПОТОК 3</text>
+        <rect x="700" y="330" width="202" height="100" rx="14" {...getNodeStyle('CLASSIFY', 'rgba(16,28,76,1)', '#34d399')} />
+        <text x="801" y="358" style={{ ...tag, fill: '#101C4C' }}>ПОТОК 3</text>
         <text x="801" y="383" style={{ ...name, fontSize: 19 }}>ml-classify</text>
         <text x="801" y="405" style={sub}>SLM + Эвристика</text>
 
-        <circle cx="978" cy="240" r="36" {...getNodeStyle('VERDICT', 'rgba(255,255,255,0.35)', '#ffffff')} />
-        <text x="978" y="246" style={{ ...sub, fill: '#e2e8f0' }}>вердикт</text>
+        <circle cx="978" cy="240" r="36" {...getNodeStyle('VERDICT', 'rgba(16,28,76,1)', 'rgba(16,28,76,1)')} />
+        <text x="978" y="246" style={{ ...sub, fill: '#101C4C' }}>вердикт</text>
 
         {/* Итоги */}
-        <rect x="1062" y="103" width="318" height="110" rx="14" {...getNodeStyle('OUT_CLEAN', 'rgba(52,211,153,0.3)', '#10b981')} fill="rgba(52,211,153,0.05)" />
-        <text x="1221" y="135" style={{ ...tag, fill: '#34d399' }}>ЧИСТО ✓</text>
+        <rect x="1062" y="103" width="318" height="110" rx="14" {...getNodeStyle('OUT_CLEAN', 'rgba(16,28,76,1)', '#10b981')} fill="rgba(52,211,153,0.05)" />
+        <text x="1221" y="135" style={{ ...tag, fill: '#101C4C' }}>ЧИСТО</text>
         <text x="1221" y="162" style={name}>Получателю</text>
         <text x="1221" y="186" style={sub}>без задержек и изменений</text>
 
-        <rect x="1062" y="267" width="318" height="110" rx="14" {...getNodeStyle('OUT_THREAT', 'rgba(251,113,133,0.4)', '#ef4444')} fill="rgba(251,113,133,0.07)" />
-        <text x="1221" y="299" style={{ ...tag, fill: '#fb7185' }}>УГРОЗА ✕</text>
+        <rect x="1062" y="267" width="318" height="110" rx="14" {...getNodeStyle('OUT_THREAT', 'rgba(16,28,76,1)', '#ef4444')} fill="rgba(251,113,133,0.07)" />
+        <text x="1221" y="299" style={{ ...tag, fill: '#101C4C' }}>УГРОЗА</text>
         <text x="1221" y="326" style={name}>В карантин</text>
         <text x="1221" y="350" style={sub}>щит + заключение для ИБ</text>
       </g>
@@ -228,7 +228,7 @@ export default function PipelineDiagram() {
       
       {/* Кнопки управления симуляцией */}
       <div className="flex flex-wrap justify-center gap-3 mb-4 relative z-10">
-        <span className="flex items-center text-xs font-mono uppercase text-slate-500 mr-2 tracking-widest">
+        <span className="flex items-center text-xs font-mono uppercase mr-2 tracking-widest">
           Симуляция:
         </span>
         <button 
@@ -236,9 +236,9 @@ export default function PipelineDiagram() {
           disabled={isRunning}
           className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border ${
             activeScenarioName === 'clean' && isRunning 
-              ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
-              : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-          } disabled:opacity-50`}
+              ? 'bg-[#101C4C] text-[#ECF3FB]' 
+              : 'bg-[#ECF3FB] border-[#101C4C] text-[#101C4C] hover:bg-[#ECF3FB]/80'
+          }`}
         >
           Легитимное письмо
         </button>
@@ -247,22 +247,22 @@ export default function PipelineDiagram() {
           disabled={isRunning}
           className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border ${
             activeScenarioName === 'obf' && isRunning 
-              ? 'bg-rose-500/20 border-rose-500/50 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.3)]' 
-              : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-          } disabled:opacity-50`}
+              ? 'bg-[#101C4C] text-[#ECF3FB]' 
+              : 'bg-[#ECF3FB] border-[#101C4C] text-[#101C4C] hover:bg-[#ECF3FB]/80'
+          } `}
         >
-          Скрытая угроза (Обфускация)
+          Скрытая угроза
         </button>
         <button 
           onClick={() => playScenario('semantic')}
           disabled={isRunning}
           className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all border ${
             activeScenarioName === 'semantic' && isRunning 
-              ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]' 
-              : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-          } disabled:opacity-50`}
+              ? 'bg-[#101C4C] text-[#ECF3FB]' 
+              : 'bg-[#ECF3FB] border-[#101C4C] text-[#101C4C] hover:bg-[#ECF3FB]/80'
+          } `}
         >
-          Zero-Day (Парафраз)
+          Zero-Day
         </button>
       </div>
 

@@ -23,37 +23,37 @@ function FilterSimulator() {
   
   const cases = [
     {
-      title: 'Ложное срабатывание (Обычный фильтр банит бизнес)',
+      title: 'Ложное срабатывание',
       text: 'Заказ: 15 кг хлора для бассейна. Срочно.',
-      dumb: { status: 'БЛОКИРОВКА', reason: 'Найдено стоп-слово "хлор". Письмо не дошло до отдела закупок.', color: 'text-red-400', bg: 'bg-red-500/10' },
-      smart: { status: 'ПРОПУЩЕНО', reason: 'ИИ понял контекст: это бытовая закупка, а не химическая угроза.', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+      dumb: { status: 'БЛОКИРОВКА', reason: 'Найдено стоп-слово "хлор". Письмо не дошло до отдела закупок.', color: 'text-[#E74040]', bg: 'bg-[#E74040]/10' },
+      smart: { status: 'ПРОПУЩЕНО', reason: 'ИИ понял контекст: это бытовая закупка, а не химическая угроза.', color: 'text-[#31A275]', bg: 'bg-[#31A275]/10' },
     },
     {
-      title: 'Маскировка (Обычный фильтр слеп)',
+      title: 'Маскировка',
       text: 'н4 п3р3гоне сх0д ц1ст3рн с хл0р0м',
-      dumb: { status: 'ПРОПУЩЕНО', reason: 'Слова не найдены в словаре. Угроза в ящике сотрудника.', color: 'text-red-400', bg: 'bg-red-500/10' },
-      smart: { status: 'БЛОКИРОВКА', reason: 'Деобфускатор снял маскировку -> ИИ распознал техногенную угрозу.', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+      dumb: { status: 'ПРОПУЩЕНО', reason: 'Слова не найдены в словаре. Угроза в ящике сотрудника.', color: 'text-[#E74040]', bg: 'bg-[#E74040]/10' },
+      smart: { status: 'БЛОКИРОВКА', reason: 'Деобфускатор снял маскировку -> ИИ распознал техногенную угрозу.', color: 'text-[#31A275]', bg: 'bg-[#31A275]/10' },
     },
     {
-      title: 'Смысловой парафраз (Zero-day фишинг)',
+      title: 'Смысловой парафраз',
       text: 'Переведи монеты на кошелек, иначе твоей семье конец',
-      dumb: { status: 'ПРОПУЩЕНО', reason: 'Нет явных стоп-слов. Письмо доставлено.', color: 'text-red-400', bg: 'bg-red-500/10' },
-      smart: { status: 'БЛОКИРОВКА', reason: 'SLM понял смысл: Шантаж/Вымогательство. Отправлено в ИБ.', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+      dumb: { status: 'ПРОПУЩЕНО', reason: 'Нет явных стоп-слов. Письмо доставлено.', color: 'text-[#E74040]', bg: 'bg-[#E74040]/10' },
+      smart: { status: 'БЛОКИРОВКА', reason: 'SLM понял смысл: Шантаж/Вымогательство. Письмо отправлено в ИБ.', color: 'text-[#31A275]', bg: 'bg-[#31A275]/10' },
     }
   ];
 
   return (
-    <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-900/50 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
+    <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 gap-6 bg-[#ECF3FB] p-6 rounded-3xl border border-white/10 backdrop-blur-md">
       <div className="md:col-span-4 flex flex-col gap-2">
-        <div className="text-xs font-mono uppercase text-slate-500 mb-2">Выберите сценарий атаки:</div>
+        <div className="text-xs font-mono uppercase text-[#101C4C] mb-2">Выберите сценарий атаки:</div>
         {cases.map((c, i) => (
           <button
             key={i}
             onClick={() => setActiveCase(i)}
             className={`text-left px-4 py-3 rounded-xl text-base transition-all border ${
               activeCase === i 
-              ? 'bg-blue-600/20 border-blue-500/50 text-white shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
-              : 'bg-white/5 border-transparent text-slate-400 hover:bg-white/10'
+              ? 'bg-[#101C4C] text-[#ECF3FB]' 
+              : 'bg-white/5 border-transparent text-[#101C4C] hover:bg-white/10'
             }`}
           >
             <div className="font-bold mb-1 leading-tight">{c.title}</div>
@@ -63,20 +63,20 @@ function FilterSimulator() {
       </div>
 
       <div className="md:col-span-8 flex flex-col gap-4">
-        <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 font-mono text-base text-slate-300">
-          <span className="text-slate-500">Входящее письмо:</span> <br/>
+        <div className="bg-[#ECF3FB] rounded-xl p-4 border border-slate-800 font-mono text-base text-[#4F6590]">
+          <span className="text-[#101C4C]">Входящее письмо:</span> <br/>
           &gt; {cases[activeCase].text}
         </div>
 
         <div className="grid grid-cols-2 gap-4 h-full">
-          <div className={`rounded-xl p-5 border border-slate-700/50 flex flex-col justify-between transition-colors ${cases[activeCase].dumb.bg}`}>
+          <div className={`rounded-xl p-5 border border-[#E74040] flex flex-col justify-between transition-colors ${cases[activeCase].dumb.bg}`}>
             <div>
-              <div className="text-xs font-bold uppercase text-slate-400 mb-4">Устаревший фильтр (Регулярки)</div>
+              <div className="text-xs font-bold uppercase text-[#101C4C] mb-4">Устаревший фильтр</div>
               <div className={`text-2xl font-black tracking-wider ${cases[activeCase].dumb.color}`}>
                 {cases[activeCase].dumb.status}
               </div>
             </div>
-            <div className="text-sm text-slate-400 mt-4 border-t border-slate-700/50 pt-2 leading-relaxed">
+            <div className="text-sm text-[#101C4C] mt-4 border-t border-[#E74040] pt-2 leading-relaxed">
               Итог: {cases[activeCase].dumb.reason}
             </div>
           </div>
@@ -84,15 +84,14 @@ function FilterSimulator() {
           <div className={`rounded-xl p-5 border border-slate-700/50 flex flex-col justify-between transition-colors relative overflow-hidden ${cases[activeCase].smart.bg}`}>
             <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 rounded-full blur-xl" />
             <div className="relative z-10">
-              <div className="text-xs font-bold uppercase text-slate-400 mb-4 flex items-center gap-2">
-                <LogoMark className="w-5 h-5 opacity-70" />
-                СейфМейл (Нейросеть)
+              <div className="text-xs font-bold uppercase text-[#101C4C] mb-4 flex items-center gap-2">
+                СейфМейл
               </div>
               <div className={`text-2xl font-black tracking-wider ${cases[activeCase].smart.color}`}>
                 {cases[activeCase].smart.status}
               </div>
             </div>
-            <div className="text-sm text-slate-300 mt-4 border-t border-slate-700/50 pt-2 leading-relaxed relative z-10">
+            <div className="text-sm text-[#4F6590] mt-4 border-t border-slate-700/50 pt-2 leading-relaxed relative z-10">
               Итог: {cases[activeCase].smart.reason}
             </div>
           </div>
@@ -142,7 +141,7 @@ function UserJourneyStaircase() {
   const indents = ['md:ml-0', 'md:ml-[12%]', 'md:ml-[24%]', 'md:ml-[36%]'];
 
   return (
-    <div className="w-full max-w-5xl flex flex-col md:flex-row gap-8 items-center bg-slate-900/40 p-6 rounded-3xl border border-white/5 backdrop-blur-md">
+    <div className="w-full max-w-5xl flex flex-col md:flex-row gap-8 items-center bg-[#ECF3FB] p-6 rounded-3xl border border-white/5 backdrop-blur-md">
       <div className="flex-1 flex flex-col w-full relative min-w-0">
         {steps.map((step, idx) => (
           <div 
@@ -154,34 +153,36 @@ function UserJourneyStaircase() {
             onMouseEnter={() => setActiveStep(idx)}
           >
             <div className={`w-14 h-14 shrink-0 rounded-full flex items-center justify-center border-2 transition-colors ${
-              activeStep === idx ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)]' : 'bg-slate-800 border-slate-700 text-slate-400'
+              activeStep === idx 
+                ? 'bg-[#101C4C] text-[#ECF3FB] border-[#101C4C]'   // светлая иконка на тёмном фоне
+                : 'bg-[#ECF3FB] text-[#4F6590] border-[#4F6590]'  
             }`}>
               {step.icon}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-bold text-white text-base tracking-wide">{step.title}</div>
-              <div className="text-sm text-slate-400 mt-1 max-w-[240px] leading-relaxed">{step.desc}</div>
+              <div className="font-bold text-[#101C4C] text-base tracking-wide">{step.title}</div>
+              <div className="text-sm text-[#101C4C] mt-1 max-w-[240px] leading-relaxed">{step.desc}</div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="flex-1 w-full bg-slate-950 rounded-2xl border border-slate-800 p-6 shadow-2xl flex flex-col gap-6 relative overflow-hidden">
+      <div className="flex-1 w-full bg-[#ECF3FB] rounded-2xl border border-slate-800 p-6 shadow-2xl flex flex-col gap-6 relative overflow-hidden">
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-blue-600/10 blur-[50px] rounded-full pointer-events-none" />
-        <h3 className="text-xl font-black text-white border-b border-slate-800 pb-4 flex items-center gap-3">
-          <span className="text-blue-400 [&>svg]:w-7 [&>svg]:h-7">{steps[activeStep].icon}</span>
+        <h3 className="text-xl font-black text-[#101C4C] border-b border-slate-800 pb-4 flex items-center gap-3">
+          <span className="text-[#101C4C] [&>svg]:w-7 [&>svg]:h-7">{steps[activeStep].icon}</span>
           Этап: {steps[activeStep].title}
         </h3>
         <div className="flex flex-col gap-4 relative z-10">
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-5">
-            <div className="text-xs font-bold uppercase tracking-wider text-red-400 mb-2">Без нашей защиты</div>
-            <div className="text-base text-slate-300 leading-relaxed">{steps[activeStep].danger}</div>
+          <div className="bg-[#E74040]/10 border border-[#E74040]/20 rounded-xl p-5">
+            <div className="text-xs font-bold uppercase tracking-wider text-[#E74040] mb-2">Без нашей защиты</div>
+            <div className="text-base text-[#4F6590] leading-relaxed">{steps[activeStep].danger}</div>
           </div>
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-5">
-            <div className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-2">
-              <LogoMark className="w-4 h-4" /> СейфМейл
+          <div className="bg-[#31A275]/10 border border-[#31A275]/20 rounded-xl p-5">
+            <div className="text-xs font-bold uppercase tracking-wider text-[#31A275] mb-2 flex items-center gap-2">
+              СейфМейл
             </div>
-            <div className="text-base text-slate-300 leading-relaxed">{steps[activeStep].safe}</div>
+            <div className="text-base text-[#4F6590] leading-relaxed">{steps[activeStep].safe}</div>
           </div>
         </div>
       </div>
@@ -253,65 +254,65 @@ function TargetAudienceSimulator() {
       
       {/* 1. СТАТИЧНЫЙ БЛОК: Формат поставки (Сверху) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-slate-900/40 border border-blue-500/30 rounded-2xl p-5 relative overflow-hidden group">
-          <h3 className="text-xl font-black text-white mb-2 flex items-center gap-2">
-            <span className="text-blue-400 [&>svg]:w-6 [&>svg]:h-6"><CloudIcon /></span> Облако (SaaS / API)
+        <div className="bg-[#ECF3FB] border border-[#101C4C]/30 rounded-2xl p-5 relative overflow-hidden group">
+          <h3 className="text-xl font-black text-[#101C4C] mb-2 flex items-center gap-2">
+            <span className="text-[#101C4C] [&>svg]:w-6 [&>svg]:h-6"><CloudIcon /></span> Облако (SaaS / API)
           </h3>
-          <p className="text-base text-slate-400 mb-4 leading-relaxed">
+          <p className="text-base text-[#101C4C] mb-4 leading-relaxed">
             Быстрый старт по подписке (B2B). Вы просто прописываете нас как MX-запись или отправляете текст по API.
           </p>
-          <ul className="text-sm text-slate-300 space-y-2">
-            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Интеграция за 10 минут</li>
-            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Оплата за объем писем или пользователей</li>
+          <ul className="text-sm text-[#4F6590] space-y-2">
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-[#31A275] shrink-0" /> Интеграция за 10 минут</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-[#31A275] shrink-0" /> Оплата за объем писем или пользователей</li>
           </ul>
         </div>
 
-        <div className="bg-slate-900/40 border border-emerald-500/30 rounded-2xl p-5 relative overflow-hidden group">
-          <h3 className="text-xl font-black text-white mb-2 flex items-center gap-2">
-            <span className="text-emerald-400 [&>svg]:w-6 [&>svg]:h-6"><CorpIcon /></span> On-Premise (В контуре)
+        <div className="bg-[#ECF3FB] border border-[#101C4C]/30 rounded-2xl p-5 relative overflow-hidden group">
+          <h3 className="text-xl font-black text-[#101C4C] mb-2 flex items-center gap-2">
+            <span className="text-[#101C4C] [&>svg]:w-6 [&>svg]:h-6"><CorpIcon /></span> On-Premise (В контуре)
           </h3>
-          <p className="text-base text-slate-400 mb-4 leading-relaxed">
+          <p className="text-base text-[#101C4C] mb-4 leading-relaxed">
             Установка на ваши серверы. Никакие данные не покидают закрытый контур компании (Enterprise).
           </p>
-          <ul className="text-sm text-slate-300 space-y-2">
-            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Полная изоляция данных (152-ФЗ)</li>
-            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-emerald-400 shrink-0" /> Работает на обычных CPU серверах</li>
+          <ul className="text-sm text-[#4F6590] space-y-2">
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-[#31A275] shrink-0" /> Полная изоляция данных (152-ФЗ)</li>
+            <li className="flex items-center gap-2"><CheckIcon className="w-4 h-4 text-[#31A275] shrink-0" /> Работает на обычных CPU серверах</li>
           </ul>
         </div>
       </div>
 
       {/* 2. ТАБЫ: Выбор аудитории (Посередине) */}
-      <div className="bg-slate-900/50 rounded-2xl border border-white/10 p-1.5 flex flex-col md:flex-row gap-1.5 backdrop-blur-md">
+      <div className="bg-[#ECF3FB] rounded-2xl border border-white/10 p-1.5 flex flex-col md:flex-row gap-1.5 backdrop-blur-md">
         {tabs.map((tab, i) => (
           <button
             key={i}
             onClick={() => setActiveTab(i)}
-            className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl transition-all ${
-              activeTab === i ? 'bg-blue-600/20 border border-blue-500/50 shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'hover:bg-white/5 border border-transparent'
+            className={`flex-1 flex flex-col items-center justify-center p-4 rounded-xl transition-all duration-300 ${
+              activeTab === i ? 'bg-[#101C4C] shadow-[0_0_20px_rgba(59,130,246,0.15)]' : 'hover:bg-[#4F6590]/5 border border-transparent'
             }`}
           >
-            <div className={`${activeTab === i ? 'text-blue-400' : 'text-slate-500'} mb-2 [&>svg]:w-8 [&>svg]:h-8 transition-colors`}>{tab.icon}</div>
-            <div className={`font-bold text-base ${activeTab === i ? 'text-white' : 'text-slate-400'}`}>{tab.title}</div>
-            {activeTab === i && <div className="text-sm text-slate-300 text-center mt-2 animate-fadeIn">{tab.desc}</div>}
+            <div className={`${activeTab === i ? 'text-[#ECF3FB]' : 'text-[#101C4C]'} mb-2 [&>svg]:w-8 [&>svg]:h-8 transition-colors duration-300`}>{tab.icon}</div>
+            <div className={`font-bold text-base ${activeTab === i ? 'text-[#ECF3FB]' : 'text-[#101C4C]'}`}>{tab.title}</div>
+            {activeTab === i && <div className="text-m text-[#4F6590] text-center mt-2 animate-fadeIn duration-300">{tab.desc}</div>}
           </button>
         ))}
       </div>
 
       {/* 3. ДИНАМИЧЕСКИЙ БЛОК: Угрозы и Решения (Снизу) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn" key={activeTab}>
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-5 flex flex-col gap-2">
-           <h4 className="text-red-400 font-bold text-sm uppercase tracking-wider mb-1 flex items-center gap-2">
+        <div className="bg-[#E74040]/10 border border-[#E74040] rounded-xl p-5 flex flex-col gap-2">
+           <h4 className="text-[#E74040] font-bold text-sm uppercase tracking-wider mb-1 flex items-center gap-2">
              <WarnIcon className="w-4 h-4" /> {tabs[activeTab].threats.title}
            </h4>
-           <p className="text-slate-300 text-base leading-relaxed">
+           <p className="text-[#4F6590] text-base leading-relaxed">
              {tabs[activeTab].threats.text}
            </p>
         </div>
-        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-5 flex flex-col gap-2">
-           <h4 className="text-blue-400 font-bold text-sm uppercase tracking-wider mb-1 flex items-center gap-2">
+        <div className="bg-[#31A275]/10 border border-[#31A275] rounded-xl p-5 flex flex-col gap-2">
+           <h4 className="text-[#101C4C] font-bold text-sm uppercase tracking-wider mb-1 flex items-center gap-2">
              <ShieldIcon className="w-4 h-4" /> {tabs[activeTab].solution.title}
            </h4>
-           <p className="text-slate-300 text-base leading-relaxed">
+           <p className="text-[#4F6590] text-base leading-relaxed">
              {tabs[activeTab].solution.text}
            </p>
         </div>
@@ -333,83 +334,83 @@ function RoiSimulator() {
 
   return (
     <div className="w-full max-w-5xl flex flex-col items-center gap-6">
-      <div className="bg-slate-900/50 p-1.5 rounded-full border border-white/10 flex gap-1 backdrop-blur-sm relative z-20">
+      <div className="bg-[#ECF3FB] p-1.5 rounded-full border border-[#101C4C] flex gap-1 backdrop-blur-sm relative z-20">
         <button 
           onClick={() => toggleMode(false)}
-          className={`px-6 py-2.5 rounded-full text-base font-bold transition-all ${!protectedMode ? 'bg-red-600/90 text-white shadow-[0_0_15px_rgba(220,38,38,0.5)]' : 'text-slate-400 hover:text-white'}`}
+          className={`px-6 py-2.5 rounded-full text-base font-bold transition-all ${!protectedMode ? 'bg-[#E74040] text-[#ECF3FB]' : 'text-[#101C4C] hover:text-[#101C4C]'}`}
         >
-          Жизнь без СейфМейл
+          Без СейфМейл
         </button>
         <button 
           onClick={() => toggleMode(true)}
-          className={`px-6 py-2.5 rounded-full text-base font-bold transition-all flex items-center gap-2 ${protectedMode ? 'bg-emerald-600/90 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'text-slate-400 hover:text-white'}`}
+          className={`px-6 py-2.5 rounded-full text-base font-bold transition-all flex items-center gap-2 ${protectedMode ? 'bg-[#101C4C] text-[#ECF3FB]' : 'text-[#101C4C] hover:text-[#101C4C]'}`}
         >
-          <LogoMark className="w-5 h-5 opacity-70" /> С защитой
+          С защитой
         </button>
       </div>
 
-      <div key={animKey} className="w-full bg-slate-950 rounded-3xl border border-slate-800 p-8 shadow-2xl overflow-hidden relative min-h-[440px] flex items-center justify-center">
+      <div key={animKey} className="w-full bg-[#ECF3FB] rounded-3xl border border-slate-800 p-8 shadow-2xl overflow-hidden relative min-h-[440px] flex items-center justify-center">
         {!protectedMode ? (
           <div className="flex flex-col items-center gap-6 w-full max-w-3xl animate-fadeIn">
-            <h3 className="text-3xl font-black text-white text-center">Сколько стоит один клик сотрудника?</h3>
+            <h3 className="text-3xl font-black text-[#101C4C] text-center">Сколько стоит один клик сотрудника?</h3>
             
             <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-              <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-5 flex flex-col items-center text-center">
-                <WarnIcon className="w-10 h-10 text-red-500 mb-3" />
-                <div className="text-sm text-slate-400 uppercase tracking-wider mb-2">Выкуп хакерам</div>
-                <div className="text-3xl font-mono font-bold text-red-400">~ 20 млн ₽</div>
+              <div className="bg-[#E74040]/10 border border-[#E74040]/50 rounded-xl p-5 flex flex-col items-center text-center">
+                <div className="text-sm text-[#101C4C] uppercase tracking-wider mb-2">Выкуп хакерам</div>
+                <div className="text-3xl font-mono font-bold text-[#E74040]">~ 20 млн ₽</div>
+                <div className="text-[11px] text-slate-600 mt-1">Без гарантии восстановления</div>
+
               </div>
-              <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-5 flex flex-col items-center text-center scale-105 shadow-[0_0_30px_rgba(220,38,38,0.15)] relative">
-                <div className="absolute -top-3 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase">Главный ущерб</div>
-                <div className="text-sm text-slate-400 uppercase tracking-wider mb-2 mt-3">Простой бизнеса</div>
-                <div className="text-4xl font-mono font-black text-red-500">~ 45 млн ₽</div>
-                <div className="text-xs text-red-400/70 mt-2">за 1 день паралича сети</div>
+              <div className="bg-[#E74040]/10 border border-[#E74040]/50 rounded-xl p-5 flex flex-col items-center text-center">
+                <div className="text-sm text-[#101C4C] uppercase tracking-wider mb-2">Простой бизнеса</div>
+                <div className="text-3xl font-mono font-black text-[#E74040]">~ 45 млн ₽</div>
+                <div className="text-[11px] text-slate-600 mt-1">За 1 день паралича сети</div>
               </div>
-              <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-5 flex flex-col items-center text-center">
-                <ShieldIcon className="w-10 h-10 text-red-500 mb-3" />
-                <div className="text-sm text-slate-400 uppercase tracking-wider mb-2">Восстановление</div>
-                <div className="text-3xl font-mono font-bold text-red-400">~ 10 млн ₽</div>
+              <div className="bg-[#E74040]/10 border border-[#E74040]/50 rounded-xl p-5 flex flex-col items-center text-center">
+                <div className="text-sm text-[#101C4C] uppercase tracking-wider mb-2">Восстановление</div>
+                <div className="text-3xl font-mono font-bold text-[#E74040]">~ 10 млн ₽</div>
+                <div className="text-[11px] text-slate-600 mt-1">Аудит, переустановка, штрафы</div>
               </div>
             </div>
             
-            <p className="text-base text-slate-400 text-center max-w-2xl mt-2 leading-relaxed">
+            <p className="text-base text-[#101C4C] text-center max-w-2xl mt-2 leading-relaxed">
               Устаревшие фильтры не видят контекст угроз. Одно фишинговое письмо с трояном, пропущенное в ящик бухгалтеру, обходится компании в десятки миллионов рублей.
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-6 w-full max-w-3xl animate-fadeIn">
-            <h3 className="text-3xl font-black text-emerald-400 text-center">Окупаемость = 1 заблокированный инцидент</h3>
+            <h3 className="text-3xl font-black text-[#101C4C] text-center">Окупаемость = 1 заблокированный инцидент</h3>
             
             <div className="w-full flex items-center justify-between gap-4 mt-6">
-              <div className="flex-1 bg-slate-900 p-6 rounded-xl border border-slate-700 opacity-50 grayscale flex flex-col items-center text-center">
-                <HackerIcon className="w-12 h-12 text-slate-400 mb-4" />
-                <div className="text-xs font-mono text-slate-500 uppercase">Атакующий</div>
-                <div className="text-base text-slate-400 mt-3 leading-relaxed">«Письма не доходят. Смысла атаковать эту компанию нет.»</div>
+              <div className="flex-1 bg-[#4F6590]/40 p-6 rounded-xl border border-[#4F6590] opacity-50 flex flex-col items-center text-center">
+                <HackerIcon className="w-12 h-12 text-[#101C4C] mb-4" />
+                <div className="text-xs font-mono text-[#101C4C] uppercase">Атакующий</div>
+                <div className="text-base text-[#101C4C] mt-3 leading-relaxed">«Письма не доходят. Смысла атаковать эту компанию нет.»</div>
               </div>
 
               <div className="shrink-0 flex flex-col items-center px-4">
-                <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.3)]">
-                  <LogoMark className="w-12 h-12 text-emerald-400" />
+                <div className="w-24 h-24 rounded-full bg-[#31A275]/20 flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+                  <span className='text-[#101C4C]'><LogoMark className="w-12 h-12 text-[#31A275]" /></span>
                 </div>
               </div>
 
-              <div className="flex-1 bg-blue-900/20 p-6 rounded-xl border border-blue-500/30 flex flex-col items-center text-center shadow-[0_0_20px_rgba(59,130,246,0.1)]">
-                <CorpIcon className="w-12 h-12 text-blue-400 mb-4" />
-                <div className="text-xs font-mono text-blue-400 uppercase">Ваш Бизнес</div>
-                <div className="text-base text-slate-300 mt-3 font-medium leading-relaxed">Работа идет штатно. Убытки: 0 ₽.</div>
+              <div className="flex-1 bg-[#ECF3FB] p-6 rounded-xl border border-[#101C4C] flex flex-col items-center text-center shadow-[0_0_20px_rgba(59,130,246,0.1)]">
+                <CorpIcon className="w-12 h-12 text-[#101C4C] mb-4" />
+                <div className="text-xs font-mono text-[#101C4C] uppercase">Ваш Бизнес</div>
+                <div className="text-base text-[#101C4C] mt-3 font-medium leading-relaxed">Работа идет штатно <br/> Убытки: 0 ₽</div>
               </div>
             </div>
             
             <div className="text-center mt-6">
-              <p className="text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
-                Стоимость лицензии <b className="text-white">СейфМейл</b> несопоставимо мала по сравнению с одним днем простоя компании. Вы платите один раз и навсегда исключаете человеческий фактор.
+              <p className="text-base text-[#4F6590] max-w-2xl mx-auto leading-relaxed">
+                Стоимость лицензии <b className="text-[#101C4C]">СейфМейл</b> несопоставимо мала по сравнению с одним днем простоя компании. Вы платите один раз и навсегда исключаете человеческий фактор.
               </p>
               <div className="mt-8 flex justify-center gap-4">
                 <Link
                   href="/admin"
-                  className="inline-block px-8 py-3 rounded-full bg-blue-600 text-white font-bold text-base tracking-wide shadow-[0_0_20px_rgba(59,130,246,0.5)] hover:shadow-[0_0_30px_rgba(59,130,246,0.7)] hover:scale-105 transition-all"
+                  className="inline-block px-8 py-3.5 rounded-full bg-[#101C4C] text-[#ECF3FB] font-bold text-base tracking-wide bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300"
                 >
-                  Открыть демо-стенд ИБ
+                  Защитить свой бизнес
                 </Link>
               </div>
             </div>
@@ -445,18 +446,18 @@ export default function PresentationPage() {
           <div className="flex flex-wrap gap-4 justify-center">
             <Link
               href="/admin"
-              className="px-8 py-3.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-base tracking-wide shadow-[0_0_30px_rgba(59,130,246,0.5)] hover:shadow-[0_0_40px_rgba(168,85,247,0.6)] hover:scale-105 transition-all"
+              className="px-8 py-3.5 rounded-full bg-[#101C4C] text-[#ECF3FB] font-bold text-base tracking-wide bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300"
             >
               Смотреть Консоль ИБ (SOC)
             </Link>
             <Link
               href="/inbox"
-              className="px-8 py-3.5 rounded-full border border-white/20 text-white hover:bg-white/10 font-bold text-base tracking-wide transition-all"
+              className="px-8 py-3.5 rounded-full border border-white/20 text-[#101C4C] bg-[#ECF3FB] hover:border-[#4F6590]/80 border border-[#101C4C] font-bold text-base tracking-wide transition-all duration-300"
             >
               Ящик сотрудника
             </Link>
           </div>
-          <div className="text-xs font-mono text-slate-500 flex items-center gap-2 animate-pulse mt-4">
+          <div className="text-xs font-mono text-[#101C4C] flex items-center gap-2 animate-pulse mt-4">
             Листайте вниз для питча ↓
           </div>
         </div>
@@ -469,7 +470,7 @@ export default function PresentationPage() {
       badge: 'Проблема рынка',
       title: 'Устаревшие фильтры пропускают угрозы',
       subtitle:
-        'Обычные системы ищут совпадения по словарю (регулярные выражения). Хакеры легко обходят их маскировкой. СейфМейл использует нейросеть, чтобы понимать суть текста.',
+        'Обычные системы ищут совпадения по словарю, используя регулярные выражения. Хакеры легко обходят их маскировкой. СейфМейл использует нейросеть, чтобы понимать суть текста.',
       content: (
         <FilterSimulator />
       ),
@@ -487,25 +488,25 @@ export default function PresentationPage() {
           <PipelineDiagram />
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-5xl">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-14 h-14 shrink-0 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-mono font-black text-xl">CPU</div>
+            <div className="bg-[#ECF3FB] border border-[#101C4C] rounded-xl p-4 flex items-center gap-4">
+              <div className="w-14 h-14 shrink-0 rounded-xl bg-[#4F6590]/20 flex items-center justify-center text-[#4F6590] font-mono font-black text-xl">CPU</div>
               <div>
-                <h3 className="text-white font-bold text-base">Обычные серверы (Без GPU)</h3>
-                <p className="text-slate-400 text-sm mt-1 leading-relaxed">Модель оптимизирована (SLM). Запускается на типовом железе предприятия без покупки мощных видеокарт.</p>
+                <h3 className="text-[#101C4C] font-bold text-base">Обычные серверы (Без GPU)</h3>
+                <p className="text-[#101C4C] text-sm mt-1 leading-relaxed">Модель оптимизирована (SLM). Запускается на типовом железе предприятия без покупки мощных видеокарт.</p>
               </div>
             </div>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-14 h-14 shrink-0 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400 font-mono font-black text-2xl">0₽</div>
+            <div className="bg-[#ECF3FB] border border-[#101C4C] rounded-xl p-4 flex items-center gap-4">
+              <div className="w-14 h-14 shrink-0 rounded-xl bg-[#4F6590]/20 flex items-center justify-center text-[#4F6590] font-mono font-black text-2xl">0₽</div>
               <div>
-                <h3 className="text-white font-bold text-base">Без дорогих подписок</h3>
-                <p className="text-slate-400 text-sm mt-1 leading-relaxed">Локальный инференс. Вам не нужно платить за каждый токен сторонним API (как ChatGPT).</p>
+                <h3 className="text-[#101C4C] font-bold text-base">Без дорогих подписок</h3>
+                <p className="text-[#101C4C] text-sm mt-1 leading-relaxed">Локальный инференс. Вам не нужно платить за каждый токен сторонним API (как ChatGPT).</p>
               </div>
             </div>
-            <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4 flex items-center gap-4">
-              <div className="w-14 h-14 shrink-0 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400"><LightningIcon className="w-8 h-8" /></div>
+            <div className="bg-[#ECF3FB] border border-[#101C4C] rounded-xl p-4 flex items-center gap-4">
+              <div className="w-14 h-14 shrink-0 rounded-xl bg-[#4F6590]/20 flex items-center justify-center text-[#4F6590]"><LightningIcon className="w-8 h-8" /></div>
               <div>
-                <h3 className="text-white font-bold text-base">Zero-Latency</h3>
-                <p className="text-slate-400 text-sm mt-1 leading-relaxed">Тяжелый ИИ-анализ идёт асинхронно в фоне. Чистая почта пролетает шлюз без задержек.</p>
+                <h3 className="text-[#101C4C] font-bold text-base">Zero-Latency</h3>
+                <p className="text-[#101C4C] text-sm mt-1 leading-relaxed">Тяжелый ИИ-анализ идёт асинхронно в фоне. Чистая почта пролетает шлюз без задержек.</p>
               </div>
             </div>
           </div>
@@ -540,7 +541,7 @@ export default function PresentationPage() {
       id: 'roi',
       badge: 'Финансовая выгода',
       title: 'Окупаемость в один клик',
-      subtitle: 'Нажмите на переключатель. Узнайте, почему внедрение СейфМейл обходится дешевле одного дня простоя.',
+      subtitle: 'Почему внедрение СейфМейл обходится дешевле одного дня простоя?',
       content: (
         <RoiSimulator />
       ),
@@ -633,41 +634,25 @@ export default function PresentationPage() {
 
   return (
     <div
-      className="relative w-screen h-screen overflow-hidden bg-slate-950 text-white select-none font-sans"
+      className="relative w-screen h-screen overflow-hidden bg-[#ECF3FB] text-[#101C4C] select-none font-sans"
     >
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div
-          className="absolute -top-[20%] -left-[10%] w-[50vw] h-[50vw] rounded-full bg-blue-600/15 blur-[120px] transition-transform duration-1000 ease-out"
-          style={{ transform: `translateY(${currentSlide * 15}px)` }}
-        />
-        <div
-          className="absolute -bottom-[20%] -right-[10%] w-[55vw] h-[55vw] rounded-full bg-purple-600/15 blur-[140px] transition-transform duration-1000 ease-out"
-          style={{ transform: `translateY(${-currentSlide * 20}px)` }}
-        />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40vw] h-[40vw] rounded-full bg-indigo-500/5 blur-[160px]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff05_1px,transparent_1px),linear-gradient(to_bottom,#ffffff05_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
-      </div>
-
       <header className="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-6 sm:px-10 h-16">
         <div className="flex items-center gap-3">
           <LogoMark className="w-8 h-8" />
-          <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          <span className="font-extrabold text-xl tracking-tight bg-[#101C4C] bg-clip-text text-transparent">
             СейфМейл
-          </span>
-          <span className="hidden sm:inline-block text-[11px] uppercase font-mono tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-slate-300 ml-2">
-            Pitch Deck
           </span>
         </div>
 
-        <div className="hidden lg:flex items-center gap-2">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center gap-2">
           {slides.map((s, idx) => (
             <button
               key={s.id}
               onClick={() => goToSlide(idx)}
               className={`h-1.5 rounded-full transition-all duration-500 ${
                 idx === currentSlide
-                  ? 'w-8 bg-gradient-to-r from-blue-500 to-purple-500'
-                  : 'w-2 bg-white/20 hover:bg-white/40'
+                  ? 'w-8 bg-[#101C4C]'
+                  : 'w-2 bg-[#101C4C]'
               }`}
               title={`Слайд ${idx + 1}: ${s.title}`}
             />
@@ -677,10 +662,10 @@ export default function PresentationPage() {
         <div className="flex items-center gap-3">
           <Link
             href={homeUrl}
-            className="px-4 py-1.5 rounded-full text-sm font-semibold backdrop-blur-md bg-white/10 hover:bg-white/20 border border-white/15 transition-all flex items-center gap-2 text-white"
+            className="px-4 py-1.5 rounded-full text-sm font-semibold backdrop-blur-md bg-white/10 hover:bg-[#101C4C]/80 border border-white/15 transition-all duration-300 flex items-center gap-2 text-[#ECF3FB] bg-[#101C4C]"
           >
             <span>{token ? 'В интерфейс' : 'Войти'}</span>
-            <span className="text-sm opacity-60">→</span>
+
           </Link>
         </div>
       </header>
@@ -692,16 +677,19 @@ export default function PresentationPage() {
           key={current.id}
           className="w-full m-auto flex flex-col items-center transition-all duration-700 ease-out transform animate-fadeIn"
         >
+          {/*
           <div className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-xs font-mono uppercase tracking-wider text-blue-400 mb-3 shadow-sm backdrop-blur-md">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
             <span>{current.badge}</span>
           </div>
+           */}
+          
 
-          <h1 className="shrink-0 text-2xl sm:text-4xl lg:text-[40px] font-black text-center text-white tracking-tight max-w-4xl leading-[1.15] mb-3 text-balance">
+          <h1 className="shrink-0 text-2xl sm:text-4xl lg:text-[40px] font-black text-center text-[#101C4C] tracking-tight max-w-4xl leading-[1.15] mb-3 text-balance">
             {current.title}
           </h1>
 
-          <p className="shrink-0 text-sm sm:text-base text-slate-400 text-center max-w-3xl leading-relaxed mb-6 text-balance">
+          <p className="shrink-0 text-sm sm:text-base text-[#101C4C] text-center max-w-3xl leading-relaxed mb-6 text-balance">
             {current.subtitle}
           </p>
 
@@ -710,8 +698,8 @@ export default function PresentationPage() {
       </main>
 
       <footer className="absolute bottom-0 inset-x-0 z-30 h-14 px-6 sm:px-10 flex items-center justify-between pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2 text-sm font-mono text-slate-400">
-          <span className="text-white font-bold">{String(currentSlide + 1).padStart(2, '0')}</span>
+        <div className="pointer-events-auto flex items-center gap-2 text-sm font-mono text-[#101C4C]">
+          <span className="text-[#101C4C] font-bold">{String(currentSlide + 1).padStart(2, '0')}</span>
           <span>/</span>
           <span>{String(totalSlides).padStart(2, '0')}</span>
         </div>
@@ -720,7 +708,7 @@ export default function PresentationPage() {
           <button
             onClick={prevSlide}
             disabled={currentSlide === 0}
-            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-white text-base"
+            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
             title="Предыдущий слайд"
           >
             ↑
@@ -728,7 +716,7 @@ export default function PresentationPage() {
           <button
             onClick={nextSlide}
             disabled={currentSlide === totalSlides - 1}
-            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-white text-base"
+            className="w-10 h-10 rounded-full backdrop-blur-md bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/15 disabled:opacity-20 disabled:pointer-events-none transition-all text-[#101C4C] text-base"
             title="Следующий слайд"
           >
             ↓
