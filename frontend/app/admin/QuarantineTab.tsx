@@ -120,6 +120,10 @@ export default function QuarantineTab({
 
   useEffect(() => {
     // При живой SSE список и так обновляется по событию — интервал страховка.
+    // ВАЖНО: cleanup только снимает таймер и НЕ абортит in-flight загрузку.
+    // Иначе флип live (коннект/реконнект SSE пересоздаёт интервал) убивает
+    // текущий fetch: AbortError глотается, data остаётся null — вечный
+    // скелетон до ручного «Обновить». Аборт — только на размонтирование ниже.
     const t = setInterval(() => {
       if (document.hidden || tickBusy.current) return;
       tickBusy.current = true;
@@ -127,11 +131,16 @@ export default function QuarantineTab({
         tickBusy.current = false;
       });
     }, live ? 30000 : 10000);
+    return () => clearInterval(t);
+  }, [live]);
+
+  // Размонтирование — единственное место, где можно абортить текущий fetch:
+  // на StrictMode-перемаунте эффекты перестартовывают и загрузка перезапускается.
+  useEffect(() => {
     return () => {
-      clearInterval(t);
       abortRef.current?.abort();
     };
-  }, [live]);
+  }, []);
 
   const openDetails = async (id: string) => {
     try {
