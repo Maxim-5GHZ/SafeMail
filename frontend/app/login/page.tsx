@@ -149,7 +149,7 @@ export default function LoginPage() {
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="логин (латиница, цифры, . _ -)"
+                placeholder="электронная почта"
                 required={mode === 'register'}
                 minLength={2}
                 tabIndex={mode === 'register' ? 0 : -1}
