@@ -107,8 +107,11 @@ export default function QuarantineTab({
   loadRef.current = load;
 
   useEffect(() => {
+    // Тот же гард, что у статистики: если таб смонтировался до токена,
+    // первая попытка пропускается, повтор — когда токен приехал.
+    if (!token) return;
     loadRef.current();
-  }, [box, category, page, reloadToken]);
+  }, [box, category, page, reloadToken, token]);
 
   useEffect(() => {
     setPage(0);
